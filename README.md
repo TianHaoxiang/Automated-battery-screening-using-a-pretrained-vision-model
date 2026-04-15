@@ -7,7 +7,7 @@ Battery state-of-health (SOH) classification project based on structured battery
 This repository contains a lightweight project layout for:
 
 - feature extraction from battery datasets
-- AMOTF/CMAOTN-style tensor generation workflows
+- AMOTF-style tensor generation workflows
 - SOH classification training using a DINOv3-based backbone
 - dataset-combination sweep experiments for cross-dataset evaluation
 
@@ -57,7 +57,7 @@ Main training entry for the **full-data SOC-horizontal SOH classification pipeli
 
 It provides the following commands:
 
-- `build_cmaotn`
+- `build_amotf`
 - `train`
 - `run_all`
 
@@ -66,28 +66,20 @@ Dataset sweep entry for gradually expanding the training set across multiple bat
 
 It provides:
 
-- `build_cmaotn`
+- `build_amotf`
 - `dataset_sweep`
 
 ## Important Note
 
-The training entry scripts in `train/` currently **reuse a reference training module from the original local workspace**.
+The repository now includes the shared AMOTF training core inside `train/`, so the training entry scripts no longer depend on a Python module located outside the repository.
 
-In other words, this repository is **not yet fully self-contained**.
-
-Specifically, the training scripts import a module named:
+The main internal shared module is:
 
 ```python
-soh_dino_cmaotn_npz_partial_cycles_partial_sweep_soc_horizontal
+soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal
 ```
 
-That reference file is **not included inside this repository** at the moment.
-
-So if you want this repository to run independently on another machine, you will need to do one of the following:
-
-- copy the reference core training file into this repo
-- refactor the current training entry scripts so they do not depend on the external local module
-- package the shared training core into a proper internal module
+This keeps the CLI entry scripts lightweight while allowing the repository to run as a self-contained project.
 
 ## Recommended Environment
 
@@ -120,12 +112,12 @@ Generate or organize a CSV containing at least:
 - `original_path`
 - `assigned_class`
 
-### 2. Build CMAOTN/AMOTF tensors
+### 2. Build AMOTF/AMOTF tensors
 
 Example:
 
 ```bash
-python train/soh_dino_amotf_npz_soc_horizontal.py build_cmaotn \
+python train/soh_dino_amotf_npz_soc_horizontal.py build_amotf \
   --labels_csv /path/to/soh_classification_results.csv
 ```
 
@@ -138,7 +130,7 @@ python train/soh_dino_amotf_npz_soc_horizontal.py train \
   --labels_csv /path/to/soh_classification_results.csv \
   --runs_root /path/to/outputs \
   --run_name exp_full_soc_horizontal_npz \
-  --input_mode cmaotn_npz \
+  --input_mode amotf_npz \
   --finetune_backbone \
   --lr 5e-4 \
   --npz_norm log1p_global \
@@ -205,7 +197,6 @@ This repository already contains:
 What may still be improved later:
 
 - add a `requirements.txt`
-- make training code self-contained
 - add example labels CSV
 - add reproducible environment instructions
 - add experiment result snapshots

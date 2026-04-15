@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 
-# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/soh_dino_cmaotn_npz_soc_horizontal.py train \
+# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/soh_dino_amotf_npz_soc_horizontal.py train \
 #   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv \
-#   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_cmaotn_dino_runs \
+#   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs \
 #   --run_name exp_full_soc_horizontal_npz \
-#   --input_mode cmaotn_npz \
+#   --input_mode amotf_npz \
 #   --finetune_backbone \
 #   --lr 5e-4 \
 #   --npz_norm log1p_global \
@@ -26,16 +26,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import soh_dino_cmaotn_npz_partial_cycles_partial_sweep_soc_horizontal as ref
+import soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal as ref
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="CMAOTN image build + DINOv3 SOH classification (SOC-horizontal, full-data only)."
+        description="AMOTF image build + DINOv3 SOH classification (SOC-horizontal, full-data only)."
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    ap_build = sub.add_parser("build_cmaotn", help="Build CMAOTN images (PNG/NPZ) under each sample dir/cmaotn/")
+    ap_build = sub.add_parser("build_amotf", help="Build AMOTF images (PNG/NPZ) under each sample dir/amotf/")
     ap_build.add_argument("--labels_csv", type=str, default=ref._default_labels_csv())
     ap_build.add_argument("--out_size", type=int, default=0)
     ap_build.add_argument("--m", type=int, default=5)
@@ -49,7 +49,7 @@ def main() -> int:
     ap_train.add_argument("--labels_csv", type=str, default=ref._default_labels_csv())
     ap_train.add_argument("--runs_root", type=str, default=ref._default_runs_root())
     ap_train.add_argument("--run_name", type=str, default="")
-    ap_train.add_argument("--input_mode", choices=["cmaotn", "cmaotn_npz", "png"], default="cmaotn_npz")
+    ap_train.add_argument("--input_mode", choices=["amotf", "amotf_npz", "png"], default="amotf_npz")
     ap_train.add_argument("--max_points", type=int, default=2000)
     ap_train.add_argument("--kfold", type=int, default=5)
     ap_train.add_argument("--split_indices_json", type=str, default="")
@@ -89,7 +89,7 @@ def main() -> int:
     ap_train.add_argument("--hf_model_id", type=str, default="facebook/dinov3-convnext-tiny-pretrain-lvd1689m")
     ap_train.add_argument("--hf_local_only", action="store_true")
 
-    ap_all = sub.add_parser("run_all", help="Build CMAOTN then train CMAOTN and PNG baseline under one run dir")
+    ap_all = sub.add_parser("run_all", help="Build AMOTF then train AMOTF and PNG baseline under one run dir")
     ap_all.add_argument("--labels_csv", type=str, default=ref._default_labels_csv())
     ap_all.add_argument("--runs_root", type=str, default=ref._default_runs_root())
     ap_all.add_argument("--run_name", type=str, default="")
@@ -148,9 +148,9 @@ def main() -> int:
     if hasattr(args, "exclude_samples_txt"):
         args.exclude_samples_txt = ref.remap_known_root(getattr(args, "exclude_samples_txt", ""))
 
-    if args.cmd == "build_cmaotn":
+    if args.cmd == "build_amotf":
         spans = ref._parse_spans(args.spans)
-        return ref.build_cmaotn_images_from_csv(
+        return ref.build_amotf_images_from_csv(
             labels_csv=args.labels_csv,
             out_size=args.out_size,
             m=args.m,
@@ -174,8 +174,8 @@ def main() -> int:
         ref._setup_logging(run_root / "run_all.log")
 
         ref.LOGGER.info("run_all run_name=%s", run_name)
-        ref.LOGGER.info("step=build_cmaotn")
-        rc = ref.build_cmaotn_images_from_csv(
+        ref.LOGGER.info("step=build_amotf")
+        rc = ref.build_amotf_images_from_csv(
             labels_csv=args.labels_csv,
             out_size=int(args.out_size),
             m=int(args.m),
@@ -186,7 +186,7 @@ def main() -> int:
             num_workers=int(args.num_workers_build),
         )
         if rc != 0:
-            ref.LOGGER.error("build_cmaotn failed rc=%d", rc)
+            ref.LOGGER.error("build_amotf failed rc=%d", rc)
             return int(rc)
 
         keep, stats = ref._collect_intersection_original_paths(args.labels_csv, max_points=int(args.max_points))
@@ -198,12 +198,12 @@ def main() -> int:
         subset_csv = run_root / "labels_intersection.csv"
         ref._write_labels_subset(args.labels_csv, keep, subset_csv)
 
-        ref.LOGGER.info("step=train_cmaotn_npz")
+        ref.LOGGER.info("step=train_amotf_npz")
         rc1 = ref.train_dino_soh_classifier(
             labels_csv=str(subset_csv),
             runs_root=str(args.runs_root),
             run_name=run_name,
-            input_mode="cmaotn_npz",
+            input_mode="amotf_npz",
             max_points=int(args.max_points),
             kfold=int(args.kfold),
             split_indices_json=str(getattr(args, "split_indices_json", "")),

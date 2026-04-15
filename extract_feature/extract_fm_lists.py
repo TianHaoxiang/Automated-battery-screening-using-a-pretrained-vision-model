@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 def generate_fm_lists():
-    root = Path("/media/haoxiang/THX_HP_P900/Battery/dataset/Tao/Battery_Archive/outputs/soh_cmaotn_dino_runs/run_20260125_011032/bad_case_cmaotn_analysis")
+    root = Path("/media/haoxiang/THX_HP_P900/Battery/dataset/Tao/Battery_Archive/outputs/soh_amotf_dino_runs/run_20260125_011032/bad_case_amotf_analysis")
     fm_csv = root / "bad_case_failure_modes.csv"
     
     if not fm_csv.exists():

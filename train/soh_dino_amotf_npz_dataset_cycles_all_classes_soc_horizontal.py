@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 
-LOGGER = logging.getLogger("soh_cmaotn_dino_dataset_sweep")
+LOGGER = logging.getLogger("soh_amotf_dino_dataset_sweep")
 
 
 TARGET_DATASETS = ["CALCE", "HNEI", "Oxford", "SNL_LFP", "SNL_NCA", "SNL_NMC", "UL_Purdue"]
@@ -157,7 +157,7 @@ def _import_reference_module():
     if str(script_dir) not in sys.path:
         sys.path.insert(0, str(script_dir))
 
-    import soh_dino_cmaotn_npz_partial_cycles_partial_sweep_soc_horizontal as ref
+    import soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal as ref
 
     return ref
 
@@ -223,9 +223,9 @@ def run_dataset_sweep(
     LOGGER.info("labels_csv=%s", str(labels_csv))
     LOGGER.info("target_datasets=%s", TARGET_DATASETS)
 
-    # Load once, and require usable cmaotn_npz.
+    # Load once, and require usable amotf_npz.
     records_all, dropped0 = ref._load_records(labels_csv, max_points=int(max_points))
-    records, dropped1 = ref._filter_by_input_mode(records_all, input_mode="cmaotn_npz")
+    records, dropped1 = ref._filter_by_input_mode(records_all, input_mode="amotf_npz")
 
     dropped = dict(dropped0)
     for k, v in dropped1.items():
@@ -321,7 +321,7 @@ def run_dataset_sweep(
             labels_csv=str(subset_csv),
             runs_root=str(top_run_root),
             run_name=str(combo_dir.name),
-            input_mode="cmaotn_npz",
+            input_mode="amotf_npz",
             max_points=int(max_points),
             kfold=int(kfold),
             seed=int(seed),
@@ -360,7 +360,7 @@ def run_dataset_sweep(
             hf_local_only=bool(hf_local_only),
         )
 
-        summ_path = combo_dir / "cmaotn_npz" / "summary.json"
+        summ_path = combo_dir / "amotf_npz" / "summary.json"
         summ: Dict[str, Any] = {}
         if summ_path.exists():
             try:
@@ -400,11 +400,11 @@ def main() -> int:
     ref = _import_reference_module()
 
     ap = argparse.ArgumentParser(
-        description="CMAOTN NPZ build + dataset combination sweep for DINO SOH classification (joint stratified by dataset×class)."
+        description="AMOTF NPZ build + dataset combination sweep for DINO SOH classification (joint stratified by dataset×class)."
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    ap_build = sub.add_parser("build_cmaotn", help="Build CMAOTN NPZ (and optional PNG) under each sample dir/cmaotn/")
+    ap_build = sub.add_parser("build_amotf", help="Build AMOTF NPZ (and optional PNG) under each sample dir/amotf/")
     ap_build.add_argument("--labels_csv", type=str, default=ref._default_labels_csv())
     ap_build.add_argument("--out_size", type=int, default=0)
     ap_build.add_argument("--m", type=int, default=5)
@@ -414,7 +414,7 @@ def main() -> int:
     ap_build.add_argument("--overwrite", action="store_true")
     ap_build.add_argument("--num_workers", type=int, default=0)
 
-    ap_sw = sub.add_parser("dataset_sweep", help="Sweep over dataset combinations, train CMAOTN-NPZ model, and aggregate results")
+    ap_sw = sub.add_parser("dataset_sweep", help="Sweep over dataset combinations, train AMOTF-NPZ model, and aggregate results")
     ap_sw.add_argument("--labels_csv", type=str, required=True)
     ap_sw.add_argument("--runs_root", type=str, required=True)
     ap_sw.add_argument("--run_name", type=str, required=True)
@@ -472,9 +472,9 @@ def main() -> int:
     if hasattr(args, "runs_root"):
         args.runs_root = ref.remap_known_root(args.runs_root)
 
-    if args.cmd == "build_cmaotn":
+    if args.cmd == "build_amotf":
         spans = ref._parse_spans(args.spans)
-        return ref.build_cmaotn_images_from_csv(
+        return ref.build_amotf_images_from_csv(
             labels_csv=args.labels_csv,
             out_size=int(args.out_size),
             m=int(args.m),
