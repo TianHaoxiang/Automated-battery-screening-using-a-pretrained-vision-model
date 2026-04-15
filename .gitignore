@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Data
+data/
+outputs/
+
+# Logs
+*.log
+
+# Models
+*.pt
+*.pth
+
+# System
+.DS_Store
