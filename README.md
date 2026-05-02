@@ -5,7 +5,7 @@ Battery state-of-health (SOH) classification from voltage/current cycling data, 
 ## Highlights
 
 * Structured conversion of 1D battery voltage/current curves into AMOTF tensors (PNG / NPZ).
-* SOH classification with Hugging Face `transformers` backbones and optional LoRA / full fine-tuning.
+* SOH classification with Hugging Face backbones and optional LoRA / full fine-tuning.
 * Command-line workflows for AMOTF building, `train` / `run_all`, and progressive **dataset-sweep** experiments.
 * Feature-export scripts under `extract_feature/` for preparing labels and paths from multi-source archives.
 
@@ -177,16 +177,10 @@ Included today:
 * AMOTF tensor generation and DINO-based SOH training CLIs
 * dataset-sweep experiment driver
 
-Possible next steps:
-
-* add a pinned `requirements.txt` or `environment.yml`
-* ship a small **example** labels CSV for smoke tests
-* snapshot one toy run for regression checks
-
 ## 8. Acknowledgement
 
 * Upstream public project: [https://github.com/TianHaoxiang/battery-soh-dino](https://github.com/TianHaoxiang/battery-soh-dino)
-* README sectioning (Setup / Datasets / Demo) was aligned with the style of [Prediction of second-life battery degradation trajectory using iMOE](https://github.com/terencetaothucb/Prediction-of-second-life-battery-degradation-trajectory-using-iMOE).
+
 * Battery metadata portal: [BatteryArchive.org](https://www.batteryarchive.org/cycle_list.html?t=0001) (see [battery-lcf](https://github.com/battery-lcf)).
 
 ## License
