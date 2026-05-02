@@ -1,19 +1,123 @@
 # battery-soh-dino
 
-Battery state-of-health (SOH) classification project based on structured battery curve representations and a DINO-style vision backbone.
+Battery state-of-health (SOH) classification from voltage/current cycling data, using **amplitude-aware multi-span ordinal transition field (AMOTF)** tensors and a **DINOv3-style** pretrained vision backbone. The pipeline turns 1D curves into image-like tensors (including compressed NPZ variants), then trains a classifier with optional backbone fine-tuning, class weighting, and cross-dataset sweep utilities. It is designed to work with metadata and exports aligned with **Battery Archive**–style cell and cycle tables.
 
-## Overview
+## Highlights
 
-This repository contains a lightweight project layout for:
+* Structured conversion of 1D battery voltage/current curves into AMOTF tensors (PNG / NPZ).
+* SOH classification with Hugging Face `transformers` backbones and optional LoRA / full fine-tuning.
+* Command-line workflows for AMOTF building, `train` / `run_all`, and progressive **dataset-sweep** experiments.
+* Feature-export scripts under `extract_feature/` for preparing labels and paths from multi-source archives.
 
-- feature extraction from battery datasets
-- AMOTF-style tensor generation workflows
-- SOH classification training using a DINOv3-based backbone
-- dataset-combination sweep experiments for cross-dataset evaluation
+## 1. Setup
 
-The current repository is organized as a **clean project skeleton** extracted from a larger local research workspace.
+### 1.1 Environments
 
-## Repository Structure
+This project is typically run in the conda environment used for the manuscript experiments:
+
+```bash
+conda create -n dinov3 python==3.10.19
+conda activate dinov3
+```
+
+### 1.2 Python requirements
+
+The repository does not ship a pinned `requirements.txt`; the following versions were recorded from the active **`dinov3`** environment (`python -V` and each package’s `__version__`). Reinstalls may differ by platform and wheel index.
+
+* python=3.10.19
+* numpy=1.26.4
+* pandas=2.3.3
+* scikit-learn=1.7.2
+* torch=2.5.1+cu121
+* torchvision=0.20.1+cu121
+* transformers=4.57.3
+* timm=1.0.24
+* Pillow=12.1.1
+* tqdm=4.66.5
+* matplotlib=3.8.4
+* seaborn=0.13.2
+* peft=0.18.1
+
+(`torch` / `torchvision` builds above are CUDA 12.1 wheels.)
+
+## 2. Datasets
+
+Public cycling metadata and archives compatible with this workflow are published on **BatteryArchive.org** (see also the [battery-lcf](https://github.com/battery-lcf) ecosystem):
+
+* [Battery Archive — cycling tests (list view)](https://www.batteryarchive.org/cycle_list.html?t=0001)
+
+Use the scripts in `extract_feature/` to export cells, build feature tables, and produce a **labels CSV** for training. At minimum, downstream training expects columns such as:
+
+* `sample_id`
+* `original_path`
+* `assigned_class`
+
+## 3. Demo
+
+We provide a lightweight **command-line** workflow for AMOTF generation, SOH classification, and dataset-sweep experiments.
+
+1. **Prepare labels.** Run the appropriate `extract_feature/*.py` helpers (or your own pipeline) so that `soh_classification_results.csv` (or equivalent) lists `sample_id`, `original_path`, and `assigned_class` for the cells you keep.
+2. **Build AMOTF tensors** (writes under each sample’s `amotf/` directory, including `amotf_npz`):
+
+   ```bash
+   python train/soh_dino_amotf_npz_soc_horizontal.py build_amotf \
+     --labels_csv /path/to/soh_classification_results.csv
+   ```
+
+3. **Train on the full dataset** (example; adjust paths, `run_name`, and schedule flags as needed):
+
+   ```bash
+   python train/soh_dino_amotf_npz_soc_horizontal.py train \
+     --labels_csv /path/to/soh_classification_results.csv \
+     --runs_root /path/to/outputs \
+     --run_name exp_full_soc_horizontal_npz \
+     --input_mode amotf_npz \
+     --finetune_backbone \
+     --lr 5e-4 \
+     --npz_norm log1p_global \
+     --npz_global_max_log 10.0 \
+     --use_class_weights \
+     --backbone_lr_mult 0.1 \
+     --lr_scheduler cosine_warmup \
+     --lr_warmup_ratio 0.1 \
+     --lr_min 1e-6 \
+     --epochs 50
+   ```
+
+4. **Optional — build and train in one shot** (`run_all` builds AMOTF, trains AMOTF-NPZ and PNG baselines, and writes a small comparison table):
+
+   ```bash
+   python train/soh_dino_amotf_npz_soc_horizontal.py run_all \
+     --labels_csv /path/to/soh_classification_results.csv \
+     --runs_root /path/to/outputs \
+     --run_name exp_full_soc_horizontal \
+     --finetune_backbone \
+     --lr 5e-4 \
+     --npz_norm log1p_global \
+     --npz_global_max_log 10.0 \
+     --use_class_weights \
+     --backbone_lr_mult 0.1 \
+     --lr_scheduler cosine_warmup \
+     --lr_warmup_ratio 0.1 \
+     --lr_min 1e-6 \
+     --epochs 50
+   ```
+
+5. **Optional — dataset-combination sweep** (progressively adds datasets; see script header for full flags):
+
+   ```bash
+   python train/soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py dataset_sweep \
+     --labels_csv /path/to/soh_classification_results.csv \
+     --runs_root /path/to/outputs \
+     --run_name exp_dataset_sweep \
+     --finetune_backbone \
+     --lr 5e-4 \
+     --epochs 50
+   ```
+
+**Note:** Training pulls pretrained weights from Hugging Face unless you pass `--hf_local_only` after caching models offline. Neural runs are stochastic; small metric differences between machines are normal.
+
+## 4. Repository structure
 
 ```text
 battery-soh-dino/
@@ -31,6 +135,7 @@ battery-soh-dino/
 ├── lib/
 │   └── battery_archive_feature_lib.py
 ├── train/
+│   ├── soh_dino_amotf_npz_horiz_train_core.py
 │   ├── soh_dino_amotf_npz_soc_horizontal.py
 │   └── soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py
 ├── data/
@@ -38,170 +143,53 @@ battery-soh-dino/
 └── .gitignore
 ```
 
-## Main Components
+### Main folders
 
-### `extract_feature/`
-Scripts for dataset export and feature preparation.
+* `extract_feature/`: dataset export, filtering, and feature-table preparation.
+* `lib/`: shared utilities for Battery Archive feature processing.
+* `train/`: AMOTF build + DINO training entry points (see **§5**).
+* `data/`: expected location for local datasets or intermediate CSV files.
+* `outputs/`: expected location for tensors, checkpoints, logs, and summaries (ignored by Git by default).
 
-Typical use cases include:
+## 5. Training entry points
 
-- exporting Battery Archive cells
-- extracting dataset-specific metadata or feature tables
-- preparing input CSV files for downstream training
+* **`soh_dino_amotf_npz_soc_horizontal.py`** — self-contained CLI for `build_amotf`, `train`, and `run_all` on full-cycle AMOTF NPZ / PNG inputs.
+* **`soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py`** — self-contained CLI for `build_amotf` plus **dataset_sweep** over fixed dataset combinations.
+* **`soh_dino_amotf_npz_horiz_train_core.py`** — shared implementation module retained alongside the two public CLIs as the minimal upload set for the training code.
 
-### `lib/battery_archive_feature_lib.py`
-Shared utility library for battery archive feature processing.
+Each `train/*.py` file documents additional **command-line examples** in its module header.
 
-### `train/soh_dino_amotf_npz_soc_horizontal.py`
-Main training entry for the **full-data SOC-horizontal SOH classification pipeline**.
+## 6. Outputs
 
-It provides the following commands:
+Typical artifacts include:
 
-- `build_amotf`
-- `train`
-- `run_all`
+* AMOTF NPZ tensors and optional PNG previews
+* run directories with logs and checkpoints
+* `summary.json` and sweep result CSVs
 
-### `train/soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py`
-Dataset sweep entry for gradually expanding the training set across multiple battery datasets.
+Large `data/` and `outputs/` trees are excluded from Git to avoid committing raw curves or bulky experiment trees.
 
-It provides:
+## 7. Current status
 
-- `build_amotf`
-- `dataset_sweep`
+Included today:
 
-## Important Note
+* feature-processing and dataset-export scripts
+* AMOTF tensor generation and DINO-based SOH training CLIs
+* dataset-sweep experiment driver
 
-The repository now includes the shared AMOTF training core inside `train/`, so the training entry scripts no longer depend on a Python module located outside the repository.
+Possible next steps:
 
-The main internal shared module is:
+* add a pinned `requirements.txt` or `environment.yml`
+* ship a small **example** labels CSV for smoke tests
+* snapshot one toy run for regression checks
 
-```python
-soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal
-```
+## 8. Acknowledgement
 
-This keeps the CLI entry scripts lightweight while allowing the repository to run as a self-contained project.
-
-## Recommended Environment
-
-A typical working environment would include:
-
-- Python 3.10+
-- numpy
-- pandas
-- scikit-learn
-- torch
-- torchvision
-- transformers
-- timm
-- Pillow
-- tqdm
-
-Depending on your exact training configuration, you may also need:
-
-- peft
-- matplotlib
-- seaborn
-
-## Typical Workflow
-
-### 1. Prepare labels/features
-
-Generate or organize a CSV containing at least:
-
-- `sample_id`
-- `original_path`
-- `assigned_class`
-
-### 2. Build AMOTF/AMOTF tensors
-
-Example:
-
-```bash
-python train/soh_dino_amotf_npz_soc_horizontal.py build_amotf \
-  --labels_csv /path/to/soh_classification_results.csv
-```
-
-### 3. Train on full data
-
-Example:
-
-```bash
-python train/soh_dino_amotf_npz_soc_horizontal.py train \
-  --labels_csv /path/to/soh_classification_results.csv \
-  --runs_root /path/to/outputs \
-  --run_name exp_full_soc_horizontal_npz \
-  --input_mode amotf_npz \
-  --finetune_backbone \
-  --lr 5e-4 \
-  --npz_norm log1p_global \
-  --npz_global_max_log 10.0 \
-  --use_class_weights \
-  --backbone_lr_mult 0.1 \
-  --lr_scheduler cosine_warmup \
-  --lr_warmup_ratio 0.1 \
-  --lr_min 1e-6 \
-  --epochs 50
-```
-
-### 4. Run build + train + PNG baseline together
-
-```bash
-python train/soh_dino_amotf_npz_soc_horizontal.py run_all \
-  --labels_csv /path/to/soh_classification_results.csv \
-  --runs_root /path/to/outputs \
-  --run_name exp_full_soc_horizontal \
-  --finetune_backbone \
-  --lr 5e-4 \
-  --npz_norm log1p_global \
-  --npz_global_max_log 10.0 \
-  --use_class_weights \
-  --backbone_lr_mult 0.1 \
-  --lr_scheduler cosine_warmup \
-  --lr_warmup_ratio 0.1 \
-  --lr_min 1e-6 \
-  --epochs 50
-```
-
-### 5. Run dataset sweep
-
-```bash
-python train/soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py dataset_sweep \
-  --labels_csv /path/to/soh_classification_results.csv \
-  --runs_root /path/to/outputs \
-  --run_name exp_dataset_sweep \
-  --finetune_backbone \
-  --lr 5e-4 \
-  --epochs 50
-```
-
-## Data and Outputs
-
-The repository keeps `data/` and `outputs/` directories, but they are ignored by Git by default.
-
-This is intended to avoid pushing:
-
-- raw battery data
-- generated NPZ tensors
-- model checkpoints
-- large experiment outputs
-
-## Current Status
-
-This repository already contains:
-
-- project structure cleanup
-- extracted feature-processing scripts
-- lightweight training entry points
-- GitHub upload setup via SSH
-
-What may still be improved later:
-
-- add a `requirements.txt`
-- add example labels CSV
-- add reproducible environment instructions
-- add experiment result snapshots
+* Upstream public project: [https://github.com/TianHaoxiang/battery-soh-dino](https://github.com/TianHaoxiang/battery-soh-dino)
+* README sectioning (Setup / Datasets / Demo) was aligned with the style of [Prediction of second-life battery degradation trajectory using iMOE](https://github.com/terencetaothucb/Prediction-of-second-life-battery-degradation-trajectory-using-iMOE).
+* Battery metadata portal: [BatteryArchive.org](https://www.batteryarchive.org/cycle_list.html?t=0001) (see [battery-lcf](https://github.com/battery-lcf)).
 
 ## License
 
-No license file has been added yet.
+No license file has been added yet.  
 If you plan to make the project public for wider reuse, adding a license is recommended.

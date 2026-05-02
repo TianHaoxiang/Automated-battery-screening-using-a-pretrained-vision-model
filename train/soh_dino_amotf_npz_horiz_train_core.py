@@ -2,31 +2,68 @@
 # -*- coding: utf-8 -*-
 
 # === 脚本用途 ===
-# - 角色: 主脚本(main)，用于“非4-way”的 AMOTF 实验
-# - 输入: 默认使用 amotf_npz (NPZ)；也支持 png
-# - partial: 支持 partial_cycles/seg20/<charge|discharge>/pXX 的构建与 partial_sweep（含 pooled(>=k) 阈值实验）
-# - 主要命令: build / build_partial_amotf / train / partial_sweep / run_all
-
-# === 命令行直接运行（示例） ===
-# - 查看帮助:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py --help
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py --help
-# - 构建全量 AMOTF（默认会写入 sample_dir/amotf/，并生成 amotf_npz）:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py build_amotf
-# - 构建 partial_cycles（示例：charge 相位，p01，对应最后 1/20 数据）:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py build_partial_amotf --partial_phase charge --partial_index 1 --num_splits 20
-# - 训练（建议使用 NPZ）:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py train --input_mode amotf_npz
-# - partial_sweep（自动构建 full + partial 并训练；可指定 pooled 阈值）:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py partial_sweep --run_name ps_test --partial_phase charge --train_input_mode amotf_npz --pooled_thresholds 1,5,10,15,20
-# - 一键跑（构建 + 训练 + 对比）:
-#   python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py run_all --run_name run_test
-# - 如果离线/SSL 失败，可加:
-#   --hf_local_only
-
-
-# python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py partial_sweep   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs   --run_name exp_full_partialsweep_lora   --train_input_mode amotf_npz   --partial_phase charge   --num_splits 20   --finetune_backbone   --lr 5e-4   --npz_norm log1p_global   --npz_global_max_log 10.0   --use_class_weights --backbone_lr_mult 0.1 --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 --epoch 50
-# python soh_dino_amotf_npz_partial_cycles_partial_sweep_soc_horizontal.py run_all   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs   --run_name exp_full_finetune_run_all  --finetune_backbone   --lr 5e-4   --npz_norm log1p_global   --npz_global_max_log 10.0   --use_class_weights --backbone_lr_mult 0.1 --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 --epoch 50
+# - 全功能 AMOTF + DINO SOH：build_amotf / train / run_all
+# - 默认输入 amotf_npz；train 亦支持 amotf、png
+# - 若仅需「全量数据」或「dataset 组合 sweep」，可改用同目录自包含脚本:
+#     soh_dino_amotf_npz_soc_horizontal.py
+#     soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py
+#
+# === 通用说明 ===
+# - train 前需已有对应 npz；全量 npz 由 build_amotf 生成。
+# - 续行使用反斜杠 \ 时，该行末尾不得再跟其它字符（否则 shell 会把下一行粘坏）。
+# - 离线推理训练可加: --hf_local_only（需已缓存 HuggingFace 权重）。
+#
+# === 命令行（路径可按机器修改；续行 \ 后勿再跟字符）===
+#
+# --- 帮助 ---
+# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/train/soh_dino_amotf_npz_horiz_train_core.py --help
+#
+# --- build_amotf ---
+# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/train/soh_dino_amotf_npz_horiz_train_core.py build_amotf \
+#   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv \
+#   --max_points 2000 \
+#   --m 5 --tau 1 --spans 1,2,4,8 \
+#   --out_size 0 --overwrite --num_workers 4
+#
+# --- train（全量 amotf_npz；子命令使用 --epochs）---
+# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/train/soh_dino_amotf_npz_horiz_train_core.py train \
+#   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv \
+#   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs \
+#   --run_name exp_train_npz \
+#   --input_mode amotf_npz \
+#   --max_points 2000 \
+#   --kfold 5 \
+#   --epochs 50 \
+#   --batch_size 24 \
+#   --lr 5e-4 \
+#   --weight_decay 1e-4 \
+#   --lr_scheduler cosine_warmup \
+#   --lr_warmup_ratio 0.1 \
+#   --lr_min 1e-6 \
+#   --backbone_lr_mult 0.1 \
+#   --finetune_backbone \
+#   --use_class_weights \
+#   --npz_norm log1p_global \
+#   --npz_global_max_log 10.0 \
+#   --num_workers 4
+#
+# --- run_all ---
+# python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/train/soh_dino_amotf_npz_horiz_train_core.py run_all \
+#   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv \
+#   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs \
+#   --run_name exp_run_all \
+#   --max_points 2000 \
+#   --epochs 50 \
+#   --finetune_backbone \
+#   --use_class_weights \
+#   --lr_scheduler cosine_warmup \
+#   --lr_warmup_ratio 0.1 \
+#   --lr_min 1e-6 \
+#   --backbone_lr_mult 0.1 \
+#   --npz_norm log1p_global \
+#   --npz_global_max_log 10.0 \
+#   --num_workers_build 4 \
+#   --num_workers 4
 
 
 
@@ -1029,218 +1066,6 @@ def build_amotf_images_from_csv(
     for k, v in sorted(reasons.items(), key=lambda x: (-x[1], x[0]))[:20]:
         LOGGER.info("reason_top: %s = %d", k, v)
     return 0
-
-# 新建partial_cycles目录
-def _partial_sample_dir(original_sample_dir: str, *, num_splits: int, partial_index: int, partial_phase: str) -> str:
-    return os.path.join(
-        str(original_sample_dir),
-        "partial_cycles",
-        f"seg{int(num_splits):02d}",
-        str(partial_phase),
-        f"p{int(partial_index):02d}",
-    )
-
-# 计算partial_cycles目录下每个partial_index的起始索引(倒序从后1/20（对应partial_index=1）到全量（对应partial_index=20）)
-def _partial_start_index(n: int, *, num_splits: int, partial_index: int) -> int:
-    n = int(n)
-    if n <= 1:
-        return 0
-    denom = int(num_splits)
-    if denom <= 0:
-        return 0
-    i = int(partial_index)
-    i = max(1, min(i, denom))
-    frac_start = 1.0 - (float(i) / float(denom))
-    start = int(math.floor(frac_start * float(n - 1)))
-    start = max(0, min(start, n - 1))
-    return start
-
-# 构建partial_cycles目录下每个partial_index的amotf并保存结果文件
-def build_and_save_amotf_for_partial_cycle(
-    original_sample_dir: str,
-    partial_sample_dir: str,
-    *,
-    out_size: int,
-    m: int,
-    tau: int,
-    spans: List[int],
-    max_points: int,
-    overwrite: bool,
-    num_splits: int,
-    partial_index: int,
-    partial_phase: str,
-) -> Tuple[bool, str]:
-    curve_csv = os.path.join(original_sample_dir, "curve.csv")
-    if not os.path.exists(curve_csv):
-        return False, "missing_curve_csv"
-
-    paths = _amotf_output_paths(partial_sample_dir, max_points=int(max_points))
-    out_dir = paths["out_dir"]
-    c_png = paths["c_png"]
-    d_png = paths["d_png"]
-    c_npz = paths["c_npz"]
-    d_npz = paths["d_npz"]
-
-    if (
-        (not overwrite)
-        and c_png.exists()
-        and d_png.exists()
-        and _is_valid_npz(str(c_npz))
-        and _is_valid_npz(str(d_npz))
-    ):
-        return True, "exists"
-
-    curve = read_curve_csv(curve_csv)
-    if curve is None:
-        return False, "curve_parse_failed"
-    c_trip, d_trip, why = split_charge_discharge_with_soc(curve)
-    if c_trip is None or d_trip is None:
-        return False, f"split_failed:{why}"
-
-    s_c, v_c, i_c = c_trip
-    s_d, v_d, i_d = d_trip
-
-    ph = str(partial_phase).strip().lower()
-    if ph not in ("charge", "discharge"):
-        ph = "charge"
-
-    if ph == "charge":
-        start = _partial_start_index(int(len(v_c)), num_splits=int(num_splits), partial_index=int(partial_index))
-        s_c = np.asarray(s_c, dtype=float)[start:]
-        v_c = np.asarray(v_c, dtype=float)[start:]
-        i_c = np.asarray(i_c, dtype=float)[start:]
-    else:
-        start = _partial_start_index(int(len(v_d)), num_splits=int(num_splits), partial_index=int(partial_index))
-        s_d = np.asarray(s_d, dtype=float)[start:]
-        v_d = np.asarray(v_d, dtype=float)[start:]
-        i_d = np.asarray(i_d, dtype=float)[start:]
-
-    # 采样（横轴 SOC）
-    v_c = resample_series_by_x(s_c, v_c, max_points=max_points)
-    i_c = resample_series_by_x(s_c, i_c, max_points=max_points)
-    v_d = resample_series_by_x(s_d, v_d, max_points=max_points)
-    i_d = resample_series_by_x(s_d, i_d, max_points=max_points)
-
-    v_c = _norm_minmax(v_c)
-    v_d = _norm_minmax(v_d)
-    i_c = _norm_maxabs(i_c)
-    i_d = _norm_maxabs(i_d)
-    # 根据充电和放电分别构建amotf
-    tens_c = build_amotf_multimodal(v_c, i_c, m=m, tau=tau, span_set=spans)
-    tens_d = build_amotf_multimodal(v_d, i_d, m=m, tau=tau, span_set=spans)
-
-    _ensure_dir(out_dir)
-    np.savez_compressed(str(c_npz), amotf=tens_c.astype(np.float32))
-    np.savez_compressed(str(d_npz), amotf=tens_d.astype(np.float32))
-
-    rgb_c = make_rgb_from_multichan(tens_c)
-    rgb_d = make_rgb_from_multichan(tens_d)
-    save_png_uint8(rgb_c, c_png, out_size=out_size)
-    save_png_uint8(rgb_d, d_png, out_size=out_size)
-
-    return True, "ok"
-
-# 封装partial_cycles目录下每个partial_index的amotf构建
-def _partial_amotf_worker(payload: Tuple[str, str, int, int, int, List[int], int, bool, int, int, str]) -> Tuple[bool, str]:
-    original_sample_dir, partial_sample_dir, out_size, m, tau, spans, max_points, overwrite, num_splits, partial_index, partial_phase = payload
-    return build_and_save_amotf_for_partial_cycle(
-        original_sample_dir,
-        partial_sample_dir,
-        out_size=int(out_size),
-        m=int(m),
-        tau=int(tau),
-        spans=list(spans),
-        max_points=int(max_points),
-        overwrite=bool(overwrite),
-        num_splits=int(num_splits),
-        partial_index=int(partial_index),
-        partial_phase=str(partial_phase),
-    )
-
-# 从csv中每个partial_index的amotf构建
-def build_partial_amotf_images_from_csv(
-    *,
-    labels_csv: str,
-    out_size: int = 0,
-    m: int = 5,
-    tau: int = 1,
-    spans: Optional[List[int]] = None,
-    max_points: int = 2000,
-    overwrite: bool = False,
-    num_workers: int = 0,
-    num_splits: int = 20,
-    partial_index: int = 1,
-    partial_phase: str = "charge",
-) -> int:
-    if spans is None:
-        spans = [1, 2, 4, 8]
-    rows = load_label_rows(labels_csv)
-    if not rows:
-        LOGGER.error("No rows in labels_csv=%s", labels_csv)
-        return 2
-
-    total = len(rows)
-    ok = 0
-    fail = 0
-    reasons: Dict[str, int] = {}
-
-    payloads: List[Tuple[str, str, int, int, int, List[int], int, bool, int, int, str]] = []
-    for r in rows:
-        op = str(remap_known_root(r["original_path"]))
-        pp = _partial_sample_dir(op, num_splits=int(num_splits), partial_index=int(partial_index), partial_phase=str(partial_phase))
-        payloads.append(
-            (
-                op,
-                pp,
-                int(out_size),
-                int(m),
-                int(tau),
-                list(spans or []),
-                int(max_points),
-                bool(overwrite),
-                int(num_splits),
-                int(partial_index),
-                str(partial_phase),
-            )
-        )
-
-    if num_workers and num_workers > 0:
-        import multiprocessing as mp
-
-        ctx = mp.get_context("spawn")
-        with ctx.Pool(processes=int(num_workers)) as pool:
-            for success, reason in _tqdm(
-                pool.imap(_partial_amotf_worker, payloads),
-                total=total,
-                desc=f"build_partial_amotf_{str(partial_phase)}_p{int(partial_index):02d}",
-            ):
-                if success:
-                    ok += 1
-                else:
-                    fail += 1
-                reasons[reason] = reasons.get(reason, 0) + 1
-    else:
-        for payload in _tqdm(payloads, total=total, desc=f"build_partial_amotf_{str(partial_phase)}_p{int(partial_index):02d}"):
-            success, reason = _partial_amotf_worker(payload)
-            if success:
-                ok += 1
-            else:
-                fail += 1
-            reasons[reason] = reasons.get(reason, 0) + 1
-
-    LOGGER.info(
-        "Partial AMOTF build done. phase=%s partial_index=%d/%d total=%d ok=%d fail=%d",
-        str(partial_phase),
-        int(partial_index),
-        int(num_splits),
-        total,
-        ok,
-        fail,
-    )
-    for k, v in sorted(reasons.items(), key=lambda x: (-x[1], x[0]))[:20]:
-        LOGGER.info("reason_top: %s = %d", k, v)
-    return 0
-
 
 @dataclass
 class SampleRecord:
@@ -2785,570 +2610,6 @@ def train_dino_soh_classifier(
     return 0
 
 
-def _read_csv_rows(path: Path) -> List[Dict[str, Any]]:
-    if not path.exists():
-        return []
-    pd = _try_import_pandas()
-    if pd is not None:
-        try:
-            df = pd.read_csv(str(path))
-            return df.to_dict(orient="records")
-        except Exception:
-            pass
-    with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
-        return [dict(r) for r in csv.DictReader(f)]
-
-
-def _sum_confusion_from_fold_metrics(fold_metrics_csv: Path) -> List[List[int]]:
-    rows = _read_csv_rows(fold_metrics_csv)
-    total: Optional[np.ndarray] = None
-    for r in rows:
-        s = r.get("test_confusion_matrix", "")
-        if not s:
-            continue
-        try:
-            cm = np.asarray(json.loads(str(s)), dtype=int)
-        except Exception:
-            continue
-        if cm.ndim != 2:
-            continue
-        if total is None:
-            total = np.zeros_like(cm, dtype=int)
-        if total.shape != cm.shape:
-            continue
-        total += cm
-    if total is None:
-        return []
-    return total.astype(int).tolist()
-
-
-def _safe_float(x: Any) -> float:
-    try:
-        if x is None:
-            return float("nan")
-        s = str(x).strip()
-        if s == "" or s.lower() in ("nan", "none"):
-            return float("nan")
-        return float(s)
-    except Exception:
-        return float("nan")
-
-
-def _write_partial_labels_csv(
-    in_labels_csv: str,
-    *,
-    out_csv: Path,
-    num_splits: int,
-    partial_index: int,
-    partial_phase: str,
-    max_points: int,
-    input_mode: str,
-) -> Dict[str, int]:
-    rows = load_label_rows(in_labels_csv)
-    keep_rows: List[Dict[str, Any]] = []
-    stats: Dict[str, int] = {
-        "total": 0,
-        "keep": 0,
-        "missing_partial_dir": 0,
-        "missing_input": 0,
-    }
-    for r in rows:
-        op = remap_known_root(str(r.get("original_path", "")).strip())
-        if not op:
-            continue
-        stats["total"] += 1
-        pp = _partial_sample_dir(op, num_splits=int(num_splits), partial_index=int(partial_index), partial_phase=str(partial_phase))
-        if not os.path.exists(pp):
-            stats["missing_partial_dir"] += 1
-            continue
-
-        paths = _amotf_output_paths(pp, max_points=int(max_points))
-        if str(input_mode) == "png":
-            ok = _exists(os.path.join(pp, "charge.png")) and _exists(os.path.join(pp, "discharge.png"))
-        else:
-            ok = _is_valid_npz(str(paths["c_npz"])) and _is_valid_npz(str(paths["d_npz"]))
-
-        if not ok:
-            stats["missing_input"] += 1
-            continue
-
-        sid0 = str(r.get("sample_id", "")).strip() or os.path.basename(op.rstrip("\\/")) or _sha1_short(op)
-        keep_rows.append(
-            {
-                "sample_id": f"{sid0}_p{int(partial_index):02d}",
-                "original_path": str(pp),
-                "assigned_class": str(r.get("assigned_class", "")).strip(),
-            }
-        )
-        stats["keep"] += 1
-
-    _write_csv(keep_rows, out_csv)
-    return stats
-
-
-def _write_partial_labels_ge_csv(
-    in_labels_csv: str,
-    *,
-    out_csv: Path,
-    num_splits: int,
-    partial_index_min: int,
-    partial_phase: str,
-    max_points: int,
-    input_mode: str,
-) -> Dict[str, int]:
-    rows = load_label_rows(in_labels_csv)
-    keep_rows: List[Dict[str, Any]] = []
-    stats: Dict[str, int] = {
-        "total": 0,
-        "keep": 0,
-        "missing_partial_dir": 0,
-        "missing_input": 0,
-    }
-    pmin = int(partial_index_min)
-    for r in rows:
-        op = remap_known_root(str(r.get("original_path", "")).strip())
-        if not op:
-            continue
-        sid0 = str(r.get("sample_id", "")).strip() or os.path.basename(op.rstrip("\\/")) or _sha1_short(op)
-        lab = str(r.get("assigned_class", "")).strip()
-
-        for pidx in range(max(1, pmin), int(num_splits) + 1):
-            stats["total"] += 1
-            pp = _partial_sample_dir(op, num_splits=int(num_splits), partial_index=int(pidx), partial_phase=str(partial_phase))
-            if not os.path.exists(pp):
-                stats["missing_partial_dir"] += 1
-                continue
-
-            paths = _amotf_output_paths(pp, max_points=int(max_points))
-            if str(input_mode) == "png":
-                ok = _exists(os.path.join(pp, "charge.png")) and _exists(os.path.join(pp, "discharge.png"))
-            else:
-                ok = _is_valid_npz(str(paths["c_npz"])) and _is_valid_npz(str(paths["d_npz"]))
-
-            if not ok:
-                stats["missing_input"] += 1
-                continue
-
-            keep_rows.append(
-                {
-                    "sample_id": f"{sid0}_p{int(pidx):02d}",
-                    "original_path": str(pp),
-                    "assigned_class": lab,
-                }
-            )
-            stats["keep"] += 1
-
-    _write_csv(keep_rows, out_csv)
-    return stats
-
-
-def run_partial_sweep(
-    *,
-    labels_csv: str,
-    runs_root: str,
-    run_name: str,
-    out_size: int,
-    m: int,
-    tau: int,
-    spans: List[int],
-    max_points: int,
-    overwrite: bool,
-    num_workers_build: int,
-    num_splits: int,
-    partial_phase: str,
-    train_input_mode: str,
-    pooled_thresholds: List[int],
-    partial_mode: str,
-    kfold: int,
-    split_indices_json: str = "",
-    exclude_samples_txt: str = "",
-    seed: int,
-    img_size: int,
-    batch_size: int,
-    epochs: int,
-    lr: float,
-    weight_decay: float,
-    lr_scheduler: str = "none",
-    lr_warmup_ratio: float = 0.0,
-    lr_min: float = 0.0,
-    lr_plateau_factor: float = 0.5,
-    lr_plateau_patience: int = 2,
-    backbone_lr_mult: float = 1.0,
-    num_workers: int,
-    fusion: str,
-    val_ratio: float,
-    metric_for_best: str,
-    confidence_gap_threshold: float,
-    finetune_backbone: bool,
-    chan_proj: str,
-    chan_hidden: int,
-    chan_norm: str,
-    chan_dropout: float,
-    npz_norm: str,
-    npz_global_max_log: float,
-    use_lora: bool,
-    use_class_weights: bool,
-    lora_backend: str,
-    lora_r: int,
-    lora_alpha: float,
-    lora_dropout: float,
-    lora_targets: str,
-    allow_fallback_backbone: bool,
-    hf_model_id: str,
-    hf_local_only: bool,
-) -> int:
-    base = str(run_name).strip() or _now_run_name()
-    root = Path(runs_root) / base
-    _ensure_dir(root)
-    _setup_logging(root / "partial_sweep.log")
-
-    LOGGER.info("partial_sweep run_name=%s num_splits=%d phase=%s", base, int(num_splits), str(partial_phase))
-
-    pmode = str(partial_mode or "pooled").strip().lower()
-    do_per_partial = pmode in ("per_partial", "per", "a", "both", "all")
-    do_pooled = pmode in ("pooled", "b", "both", "all")
-
-    LOGGER.info("step=build_full_amotf")
-    rc0 = build_amotf_images_from_csv(
-        labels_csv=str(labels_csv),
-        out_size=int(out_size),
-        m=int(m),
-        tau=int(tau),
-        spans=list(spans),
-        max_points=int(max_points),
-        overwrite=bool(overwrite),
-        num_workers=int(num_workers_build),
-    )
-    if rc0 != 0:
-        return int(rc0)
-
-    LOGGER.info("step=train_full_baseline")
-    rc_full = train_dino_soh_classifier(
-        labels_csv=str(labels_csv),
-        runs_root=str(runs_root),
-        run_name=f"{base}/full",
-        input_mode=str(train_input_mode),
-        max_points=int(max_points),
-        kfold=int(kfold),
-        split_indices_json=str(split_indices_json),
-        exclude_samples_txt=str(exclude_samples_txt),
-        seed=int(seed),
-        img_size=int(img_size),
-        batch_size=int(batch_size),
-        epochs=int(epochs),
-        lr=float(lr),
-        weight_decay=float(weight_decay),
-        lr_scheduler=str(lr_scheduler),
-        lr_warmup_ratio=float(lr_warmup_ratio),
-        lr_min=float(lr_min),
-        lr_plateau_factor=float(lr_plateau_factor),
-        lr_plateau_patience=int(lr_plateau_patience),
-        backbone_lr_mult=float(backbone_lr_mult),
-        num_workers=int(num_workers),
-        fusion=str(fusion),
-        val_ratio=float(val_ratio),
-        metric_for_best=str(metric_for_best),
-        confidence_gap_threshold=float(confidence_gap_threshold),
-        finetune_backbone=bool(finetune_backbone),
-        chan_proj=str(chan_proj),
-        chan_hidden=int(chan_hidden),
-        chan_norm=str(chan_norm),
-        chan_dropout=float(chan_dropout),
-        npz_norm=str(npz_norm),
-        npz_global_max_log=float(npz_global_max_log),
-        use_lora=bool(use_lora),
-        use_class_weights=bool(use_class_weights),
-        lora_backend=str(lora_backend),
-        lora_r=int(lora_r),
-        lora_alpha=float(lora_alpha),
-        lora_dropout=float(lora_dropout),
-        lora_targets=str(lora_targets),
-        allow_fallback_backbone=bool(allow_fallback_backbone),
-        hf_model_id=str(hf_model_id),
-        hf_local_only=bool(hf_local_only),
-    )
-    if rc_full != 0:
-        return int(rc_full)
-
-    full_dir = Path(runs_root) / base / "full" / str(train_input_mode)
-    full_sum: Dict[str, Any] = {}
-    if (full_dir / "summary.json").exists():
-        with open(full_dir / "summary.json", "r", encoding="utf-8") as f:
-            full_sum = json.load(f)
-    full_cm = _sum_confusion_from_fold_metrics(full_dir / "fold_metrics.csv")
-
-    sweep_rows: List[Dict[str, Any]] = []
-    sweep_rows.append(
-        {
-            "partial_index": int(num_splits),
-            "partial_ratio": 1.0,
-            "variant": "full",
-            "n_samples": "",
-            "test_acc_mean": full_sum.get("test_acc_mean", ""),
-            "test_acc_std": full_sum.get("test_acc_std", ""),
-            "test_macro_f1_mean": full_sum.get("test_macro_f1_mean", ""),
-            "test_macro_f1_std": full_sum.get("test_macro_f1_std", ""),
-            "test_weighted_f1_mean": full_sum.get("test_weighted_f1_mean", ""),
-            "test_weighted_f1_std": full_sum.get("test_weighted_f1_std", ""),
-            "test_confusion_matrix_sum": json.dumps(full_cm),
-        }
-    )
-
-    if do_per_partial:
-        for pidx in range(1, int(num_splits) + 1):
-            LOGGER.info("step=build_partial pidx=%d/%d", int(pidx), int(num_splits))
-            rc_b = build_partial_amotf_images_from_csv(
-                labels_csv=str(labels_csv),
-                out_size=int(out_size),
-                m=int(m),
-                tau=int(tau),
-                spans=list(spans),
-                max_points=int(max_points),
-                overwrite=bool(overwrite),
-                num_workers=int(num_workers_build),
-                num_splits=int(num_splits),
-                partial_index=int(pidx),
-                partial_phase=str(partial_phase),
-            )
-            if rc_b != 0:
-                LOGGER.error("partial_build_failed pidx=%d rc=%d", int(pidx), int(rc_b))
-                continue
-
-            labels_p = root / f"labels_partial_p{int(pidx):02d}.csv"
-            stats = _write_partial_labels_csv(
-                str(labels_csv),
-                out_csv=labels_p,
-                num_splits=int(num_splits),
-                partial_index=int(pidx),
-                partial_phase=str(partial_phase),
-                max_points=int(max_points),
-                input_mode=str(train_input_mode),
-            )
-            if int(stats.get("keep", 0)) < 20:
-                LOGGER.error("Too few usable partial samples pidx=%d stats=%s", int(pidx), stats)
-                continue
-
-            LOGGER.info("step=train_partial pidx=%d/%d", int(pidx), int(num_splits))
-            rc_t = train_dino_soh_classifier(
-                labels_csv=str(labels_p),
-                runs_root=str(runs_root),
-                run_name=f"{base}/partial_p{int(pidx):02d}",
-                input_mode=str(train_input_mode),
-                max_points=int(max_points),
-                kfold=int(kfold),
-                split_indices_json="",
-                exclude_samples_txt=str(exclude_samples_txt),
-                seed=int(seed),
-                img_size=int(img_size),
-                batch_size=int(batch_size),
-                epochs=int(epochs),
-                lr=float(lr),
-                weight_decay=float(weight_decay),
-                lr_scheduler=str(lr_scheduler),
-                lr_warmup_ratio=float(lr_warmup_ratio),
-                lr_min=float(lr_min),
-                lr_plateau_factor=float(lr_plateau_factor),
-                lr_plateau_patience=int(lr_plateau_patience),
-                backbone_lr_mult=float(backbone_lr_mult),
-                num_workers=int(num_workers),
-                fusion=str(fusion),
-                val_ratio=float(val_ratio),
-                metric_for_best=str(metric_for_best),
-                confidence_gap_threshold=float(confidence_gap_threshold),
-                finetune_backbone=bool(finetune_backbone),
-                chan_proj=str(chan_proj),
-                chan_hidden=int(chan_hidden),
-                chan_norm=str(chan_norm),
-                chan_dropout=float(chan_dropout),
-                use_lora=bool(use_lora),
-                npz_norm=str(npz_norm),
-                npz_global_max_log=float(npz_global_max_log),
-                use_class_weights=bool(use_class_weights),
-                lora_backend=str(lora_backend),
-                lora_r=int(lora_r),
-                lora_alpha=float(lora_alpha),
-                lora_dropout=float(lora_dropout),
-                lora_targets=str(lora_targets),
-                allow_fallback_backbone=bool(allow_fallback_backbone),
-                hf_model_id=str(hf_model_id),
-                hf_local_only=bool(hf_local_only),
-            )
-            if rc_t != 0:
-                LOGGER.error("partial_train_failed pidx=%d rc=%d", int(pidx), int(rc_t))
-                continue
-
-            rdir = Path(runs_root) / base / f"partial_p{int(pidx):02d}" / str(train_input_mode)
-            summ: Dict[str, Any] = {}
-            if (rdir / "summary.json").exists():
-                with open(rdir / "summary.json", "r", encoding="utf-8") as f:
-                    summ = json.load(f)
-            cm = _sum_confusion_from_fold_metrics(rdir / "fold_metrics.csv")
-            sweep_rows.append(
-                {
-                    "partial_index": int(pidx),
-                    "partial_ratio": float(pidx) / float(num_splits),
-                    "variant": "partial",
-                    "n_samples": int(stats.get("keep", 0)),
-                    "test_acc_mean": summ.get("test_acc_mean", ""),
-                    "test_acc_std": summ.get("test_acc_std", ""),
-                    "test_macro_f1_mean": summ.get("test_macro_f1_mean", ""),
-                    "test_macro_f1_std": summ.get("test_macro_f1_std", ""),
-                    "test_weighted_f1_mean": summ.get("test_weighted_f1_mean", ""),
-                    "test_weighted_f1_std": summ.get("test_weighted_f1_std", ""),
-                    "test_confusion_matrix_sum": json.dumps(cm),
-                }
-            )
-
-    if do_pooled and (not do_per_partial):
-        thrs = [int(x) for x in list(pooled_thresholds or []) if int(x) > 0]
-        if thrs:
-            pmin_build = max(1, min(thrs))
-            for pidx in range(int(pmin_build), int(num_splits) + 1):
-                LOGGER.info("step=build_partial_for_pooled pidx=%d/%d", int(pidx), int(num_splits))
-                rc_b = build_partial_amotf_images_from_csv(
-                    labels_csv=str(labels_csv),
-                    out_size=int(out_size),
-                    m=int(m),
-                    tau=int(tau),
-                    spans=list(spans),
-                    max_points=int(max_points),
-                    overwrite=bool(overwrite),
-                    num_workers=int(num_workers_build),
-                    num_splits=int(num_splits),
-                    partial_index=int(pidx),
-                    partial_phase=str(partial_phase),
-                )
-                if rc_b != 0:
-                    LOGGER.error("partial_build_failed pidx=%d rc=%d", int(pidx), int(rc_b))
-                    continue
-
-    _write_csv(sweep_rows, root / "partial_sweep_table.csv")
-    with open(root / "partial_sweep_table.json", "w", encoding="utf-8") as f:
-        json.dump(sweep_rows, f, ensure_ascii=False, indent=2)
-
-    full_acc = _safe_float(full_sum.get("test_acc_mean", float("nan")))
-    full_macro_f1 = _safe_float(full_sum.get("test_macro_f1_mean", float("nan")))
-    full_weighted_f1 = _safe_float(full_sum.get("test_weighted_f1_mean", float("nan")))
-
-    partial_only = [r for r in sweep_rows if str(r.get("variant", "")) == "partial"]
-    partial_only = sorted(partial_only, key=lambda r: float(r.get("partial_ratio", 0.0)))
-    analysis_rows: List[Dict[str, Any]] = []
-    for r in partial_only:
-        pr = float(r.get("partial_ratio", 0.0))
-        a = _safe_float(r.get("test_acc_mean", float("nan")))
-        mf = _safe_float(r.get("test_macro_f1_mean", float("nan")))
-        wf = _safe_float(r.get("test_weighted_f1_mean", float("nan")))
-        analysis_rows.append(
-            {
-                "partial_index": int(r.get("partial_index", 0)),
-                "partial_ratio": pr,
-                "n_samples": r.get("n_samples", ""),
-                "test_acc_mean": r.get("test_acc_mean", ""),
-                "test_macro_f1_mean": r.get("test_macro_f1_mean", ""),
-                "test_weighted_f1_mean": r.get("test_weighted_f1_mean", ""),
-                "delta_acc_vs_full": float(full_acc - a) if np.isfinite(full_acc) and np.isfinite(a) else "",
-                "delta_macro_f1_vs_full": float(full_macro_f1 - mf) if np.isfinite(full_macro_f1) and np.isfinite(mf) else "",
-                "delta_weighted_f1_vs_full": float(full_weighted_f1 - wf) if np.isfinite(full_weighted_f1) and np.isfinite(wf) else "",
-            }
-        )
-
-    _write_csv(analysis_rows, root / "partial_sweep_analysis.csv")
-    with open(root / "partial_sweep_analysis.json", "w", encoding="utf-8") as f:
-        json.dump(analysis_rows, f, ensure_ascii=False, indent=2)
-
-    pooled_rows: List[Dict[str, Any]] = []
-    if do_pooled:
-        for thr in pooled_thresholds:
-            LOGGER.info("step=train_partial_ge thr=%d", int(thr))
-            labels_ge = root / f"labels_partial_ge_p{int(thr):02d}.csv"
-            stats_ge = _write_partial_labels_ge_csv(
-                str(labels_csv),
-                out_csv=labels_ge,
-                num_splits=int(num_splits),
-                partial_index_min=int(thr),
-                partial_phase=str(partial_phase),
-                max_points=int(max_points),
-                input_mode=str(train_input_mode),
-            )
-            if int(stats_ge.get("keep", 0)) < 20:
-                LOGGER.error("Too few usable partial>=thr samples thr=%d stats=%s", int(thr), stats_ge)
-                continue
-
-            rc_ge = train_dino_soh_classifier(
-                labels_csv=str(labels_ge),
-                runs_root=str(runs_root),
-                run_name=f"{base}/partial_ge_p{int(thr):02d}",
-                input_mode=str(train_input_mode),
-                max_points=int(max_points),
-                kfold=int(kfold),
-                split_indices_json="",
-                exclude_samples_txt=str(exclude_samples_txt),
-                seed=int(seed),
-                img_size=int(img_size),
-                batch_size=int(batch_size),
-                epochs=int(epochs),
-                lr=float(lr),
-                weight_decay=float(weight_decay),
-                lr_scheduler=str(lr_scheduler),
-                lr_warmup_ratio=float(lr_warmup_ratio),
-                lr_min=float(lr_min),
-                lr_plateau_factor=float(lr_plateau_factor),
-                lr_plateau_patience=int(lr_plateau_patience),
-                backbone_lr_mult=float(backbone_lr_mult),
-                num_workers=int(num_workers),
-                fusion=str(fusion),
-                val_ratio=float(val_ratio),
-                metric_for_best=str(metric_for_best),
-                confidence_gap_threshold=float(confidence_gap_threshold),
-                finetune_backbone=bool(finetune_backbone),
-                chan_proj=str(chan_proj),
-                chan_hidden=int(chan_hidden),
-                chan_norm=str(chan_norm),
-                chan_dropout=float(chan_dropout),
-                use_lora=bool(use_lora),
-                lora_backend=str(lora_backend),
-                lora_r=int(lora_r),
-                lora_alpha=float(lora_alpha),
-                lora_dropout=float(lora_dropout),
-                lora_targets=str(lora_targets),
-                allow_fallback_backbone=bool(allow_fallback_backbone),
-                hf_model_id=str(hf_model_id),
-                hf_local_only=bool(hf_local_only),
-                group_by_sample_id=True,
-            )
-            if rc_ge != 0:
-                LOGGER.error("partial_ge_train_failed thr=%d rc=%d", int(thr), int(rc_ge))
-                continue
-
-            rdir = Path(runs_root) / base / f"partial_ge_p{int(thr):02d}" / str(train_input_mode)
-            summ: Dict[str, Any] = {}
-            if (rdir / "summary.json").exists():
-                with open(rdir / "summary.json", "r", encoding="utf-8") as f:
-                    summ = json.load(f)
-            cm = _sum_confusion_from_fold_metrics(rdir / "fold_metrics.csv")
-            pooled_rows.append(
-                {
-                    "partial_index_min": int(thr),
-                    "variant": "partial_ge",
-                    "n_samples": int(stats_ge.get("keep", 0)),
-                    "test_acc_mean": summ.get("test_acc_mean", ""),
-                    "test_acc_std": summ.get("test_acc_std", ""),
-                    "test_macro_f1_mean": summ.get("test_macro_f1_mean", ""),
-                    "test_macro_f1_std": summ.get("test_macro_f1_std", ""),
-                    "test_weighted_f1_mean": summ.get("test_weighted_f1_mean", ""),
-                    "test_weighted_f1_std": summ.get("test_weighted_f1_std", ""),
-                    "test_confusion_matrix_sum": json.dumps(cm),
-                }
-            )
-
-    if pooled_rows:
-        _write_csv(pooled_rows, root / "partial_threshold_table.csv")
-        with open(root / "partial_threshold_table.json", "w", encoding="utf-8") as f:
-            json.dump(pooled_rows, f, ensure_ascii=False, indent=2)
-
-    return 0
-
-
 def _write_labels_subset(in_labels_csv: str, original_paths_keep: set, out_csv: Path) -> None:
     rows = load_label_rows(in_labels_csv)
     keep_rows: List[Dict[str, Any]] = []
@@ -3464,19 +2725,6 @@ def main() -> int:
     ap_build.add_argument("--overwrite", action="store_true")
     ap_build.add_argument("--num_workers", type=int, default=0)
 
-    ap_build_partial = sub.add_parser("build_partial_amotf", help="Build partial-cycle AMOTF images (suffix slices) under each sample dir/partial_cycles/")
-    ap_build_partial.add_argument("--labels_csv", type=str, default=_default_labels_csv())
-    ap_build_partial.add_argument("--out_size", type=int, default=0)
-    ap_build_partial.add_argument("--m", type=int, default=5)
-    ap_build_partial.add_argument("--tau", type=int, default=1)
-    ap_build_partial.add_argument("--spans", type=str, default="1,2,4,8")
-    ap_build_partial.add_argument("--max_points", type=int, default=2000)
-    ap_build_partial.add_argument("--overwrite", action="store_true")
-    ap_build_partial.add_argument("--num_workers", type=int, default=0)
-    ap_build_partial.add_argument("--num_splits", type=int, default=20)
-    ap_build_partial.add_argument("--partial_index", type=int, default=1)
-    ap_build_partial.add_argument("--partial_phase", choices=["charge", "discharge"], default="charge")
-
     ap_train = sub.add_parser("train", help="Train classifier (use --split_indices_json to run a single fixed split)")
     ap_train.add_argument("--labels_csv", type=str, default=_default_labels_csv())
     ap_train.add_argument("--runs_root", type=str, default=_default_runs_root())
@@ -3570,60 +2818,6 @@ def main() -> int:
     ap_all.add_argument("--hf_model_id", type=str, default="facebook/dinov3-convnext-tiny-pretrain-lvd1689m")
     ap_all.add_argument("--hf_local_only", action="store_true")
 
-    ap_ps = sub.add_parser("partial_sweep", help="Run full-cycle vs partial-cycle AMOTF experiments (per-partial and pooled thresholds)")
-    ap_ps.add_argument("--labels_csv", type=str, default=_default_labels_csv())
-    ap_ps.add_argument("--runs_root", type=str, default=_default_runs_root())
-    ap_ps.add_argument("--run_name", type=str, default="")
-    ap_ps.add_argument("--out_size", type=int, default=0)
-    ap_ps.add_argument("--m", type=int, default=5)
-    ap_ps.add_argument("--tau", type=int, default=1)
-    ap_ps.add_argument("--spans", type=str, default="1,2,4,8")
-    ap_ps.add_argument("--max_points", type=int, default=2000)
-    ap_ps.add_argument("--overwrite", action="store_true")
-    ap_ps.add_argument("--num_workers_build", type=int, default=0)
-    ap_ps.add_argument("--num_splits", type=int, default=20)
-    ap_ps.add_argument("--partial_phase", choices=["charge", "discharge"], default="charge")
-    ap_ps.add_argument("--train_input_mode", choices=["amotf", "amotf_npz"], default="amotf_npz")
-    ap_ps.add_argument("--pooled_thresholds", type=str, default="1,5,10,15,20")
-    ap_ps.add_argument("--partial_mode", choices=["pooled", "per_partial", "both"], default="pooled")
-    ap_ps.add_argument("--kfold", type=int, default=5)
-    ap_ps.add_argument("--split_indices_json", type=str, default="")
-    ap_ps.add_argument("--exclude_samples_txt", type=str, default=_default_exclude_samples_txt())
-    ap_ps.add_argument("--seed", type=int, default=42)
-    ap_ps.add_argument("--img_size", type=int, default=224)
-    ap_ps.add_argument("--batch_size", type=int, default=24)
-    ap_ps.add_argument("--epochs", type=int, default=10)
-    ap_ps.add_argument("--lr", type=float, default=5e-4)
-    ap_ps.add_argument("--weight_decay", type=float, default=1e-4)
-    ap_ps.add_argument("--lr_scheduler", choices=["none", "cosine", "cosine_warmup", "onecycle", "plateau"], default="none")
-    ap_ps.add_argument("--lr_warmup_ratio", type=float, default=0.0)
-    ap_ps.add_argument("--lr_min", type=float, default=0.0)
-    ap_ps.add_argument("--lr_plateau_factor", type=float, default=0.5)
-    ap_ps.add_argument("--lr_plateau_patience", type=int, default=2)
-    ap_ps.add_argument("--backbone_lr_mult", type=float, default=1.0)
-    ap_ps.add_argument("--num_workers", type=int, default=4)
-    ap_ps.add_argument("--fusion", choices=["concat", "stack"], default="concat")
-    ap_ps.add_argument("--val_ratio", type=float, default=0.2)
-    ap_ps.add_argument("--metric_for_best", choices=["macro_f1", "acc"], default="macro_f1")
-    ap_ps.add_argument("--confidence_gap_threshold", type=float, default=0.3)
-    ap_ps.add_argument("--chan_proj", choices=["mlp", "linear"], default="mlp")
-    ap_ps.add_argument("--chan_hidden", type=int, default=0)
-    ap_ps.add_argument("--chan_norm", choices=["group", "none"], default="group")
-    ap_ps.add_argument("--chan_dropout", type=float, default=0.0)
-    ap_ps.add_argument("--npz_norm", choices=["log1p_global", "per_sample_minmax", "none"], default="log1p_global")
-    ap_ps.add_argument("--npz_global_max_log", type=float, default=8.0)
-    ap_ps.add_argument("--finetune_backbone", action="store_true")
-    ap_ps.add_argument("--use_class_weights", action="store_true")
-    ap_ps.add_argument("--use_lora", action="store_true")
-    ap_ps.add_argument("--lora_backend", choices=["auto", "peft", "custom"], default="auto")
-    ap_ps.add_argument("--lora_r", type=int, default=8)
-    ap_ps.add_argument("--lora_alpha", type=float, default=16.0)
-    ap_ps.add_argument("--lora_dropout", type=float, default=0.0)
-    ap_ps.add_argument("--lora_targets", type=str, default="pwconv,fc,qkv,proj")
-    ap_ps.add_argument("--allow_fallback_backbone", action="store_true")
-    ap_ps.add_argument("--hf_model_id", type=str, default="facebook/dinov3-convnext-tiny-pretrain-lvd1689m")
-    ap_ps.add_argument("--hf_local_only", action="store_true")
-
     args = ap.parse_args()
     # Normalize cross-OS paths in CLI args
     if hasattr(args, "labels_csv"):
@@ -3647,22 +2841,6 @@ def main() -> int:
             max_points=args.max_points,
             overwrite=bool(args.overwrite),
             num_workers=int(args.num_workers),
-        )
-
-    if args.cmd == "build_partial_amotf":
-        spans = _parse_spans(args.spans)
-        return build_partial_amotf_images_from_csv(
-            labels_csv=args.labels_csv,
-            out_size=args.out_size,
-            m=args.m,
-            tau=args.tau,
-            spans=spans,
-            max_points=args.max_points,
-            overwrite=bool(args.overwrite),
-            num_workers=int(args.num_workers),
-            num_splits=int(args.num_splits),
-            partial_index=int(args.partial_index),
-            partial_phase=str(args.partial_phase),
         )
 
     if args.cmd == "train":
@@ -3801,75 +2979,6 @@ def main() -> int:
         _compare_runs(run_root)
         LOGGER.info("run_all finished. compare_table=%s", str(run_root / "compare_table.csv"))
         return 0
-
-    if args.cmd == "partial_sweep":
-        _ensure_sklearn()
-        spans = _parse_spans(args.spans)
-        pooled: List[int] = []
-        s_thr = str(getattr(args, "pooled_thresholds", "") or "").strip()
-        if s_thr:
-            for x in s_thr.split(","):
-                x = x.strip()
-                if not x:
-                    continue
-                try:
-                    pooled.append(int(x))
-                except Exception:
-                    continue
-        return run_partial_sweep(
-            labels_csv=str(args.labels_csv),
-            runs_root=str(args.runs_root),
-            run_name=str(args.run_name),
-            out_size=int(args.out_size),
-            m=int(args.m),
-            tau=int(args.tau),
-            spans=list(spans),
-            max_points=int(args.max_points),
-            overwrite=bool(args.overwrite),
-            num_workers_build=int(args.num_workers_build),
-            num_splits=int(args.num_splits),
-            partial_phase=str(args.partial_phase),
-            train_input_mode=str(args.train_input_mode),
-            pooled_thresholds=list(pooled),
-            partial_mode=str(getattr(args, "partial_mode", "pooled")),
-            kfold=int(args.kfold),
-            split_indices_json=str(getattr(args, "split_indices_json", "")),
-            exclude_samples_txt=str(getattr(args, "exclude_samples_txt", "")),
-            seed=int(args.seed),
-            img_size=int(args.img_size),
-            batch_size=int(args.batch_size),
-            epochs=int(args.epochs),
-            lr=float(args.lr),
-            weight_decay=float(args.weight_decay),
-            lr_scheduler=str(getattr(args, "lr_scheduler", "none")),
-            lr_warmup_ratio=float(getattr(args, "lr_warmup_ratio", 0.0)),
-            lr_min=float(getattr(args, "lr_min", 0.0)),
-            lr_plateau_factor=float(getattr(args, "lr_plateau_factor", 0.5)),
-            lr_plateau_patience=int(getattr(args, "lr_plateau_patience", 2)),
-            backbone_lr_mult=float(getattr(args, "backbone_lr_mult", 1.0)),
-            num_workers=int(args.num_workers),
-            fusion=str(args.fusion),
-            val_ratio=float(args.val_ratio),
-            metric_for_best=str(args.metric_for_best),
-            confidence_gap_threshold=float(args.confidence_gap_threshold),
-            finetune_backbone=bool(args.finetune_backbone),
-            chan_proj=str(getattr(args, "chan_proj", "mlp")),
-            chan_hidden=int(getattr(args, "chan_hidden", 0)),
-            chan_norm=str(getattr(args, "chan_norm", "group")),
-            chan_dropout=float(getattr(args, "chan_dropout", 0.0)),
-            npz_norm=str(getattr(args, "npz_norm", "log1p_global")),
-            npz_global_max_log=float(getattr(args, "npz_global_max_log", 10.0)),
-            use_lora=bool(getattr(args, "use_lora", False)),
-            use_class_weights=bool(getattr(args, "use_class_weights", False)),
-            lora_backend=str(getattr(args, "lora_backend", "auto")),
-            lora_r=int(getattr(args, "lora_r", 8)),
-            lora_alpha=float(getattr(args, "lora_alpha", 16.0)),
-            lora_dropout=float(getattr(args, "lora_dropout", 0.0)),
-            lora_targets=str(getattr(args, "lora_targets", "pwconv,fc,qkv,proj")),
-            allow_fallback_backbone=bool(args.allow_fallback_backbone),
-            hf_model_id=str(args.hf_model_id),
-            hf_local_only=bool(args.hf_local_only),
-        )
 
     return 2
 
