@@ -3,7 +3,10 @@ import os
 
 import pandas as pd
 
-import battery_archive_feature_lib as lib
+from _bootstrap import import_feature_lib
+
+
+lib = import_feature_lib()
 
 
 def main() -> None:

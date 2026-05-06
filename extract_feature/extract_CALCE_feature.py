@@ -1,4 +1,7 @@
-import battery_archive_feature_lib as lib
+from _bootstrap import import_feature_lib
+
+
+lib = import_feature_lib()
 
 
 if __name__ == "__main__":

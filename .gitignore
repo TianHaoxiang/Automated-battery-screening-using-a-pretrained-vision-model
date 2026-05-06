@@ -3,7 +3,8 @@ __pycache__/
 *.pyc
 
 # Data
-data/
+data/*
+!data/soh_classification_results_portable.csv
 outputs/
 
 # Logs

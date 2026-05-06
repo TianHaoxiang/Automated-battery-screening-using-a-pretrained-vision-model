@@ -25,7 +25,7 @@
 #   --m 5 --tau 1 --spans 1,2,4,8 \
 #   --out_size 0 --overwrite --num_workers 4
 #
-# --- train（全量 amotf_npz；子命令使用 --epochs）---
+# --- train（全量 amotf_npz；--epoch 与 --epochs 等价）---
 # python /mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/train/soh_dino_amotf_npz_horiz_train_core.py train \
 #   --labels_csv /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv \
 #   --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs \
@@ -72,14 +72,20 @@
 
 import argparse
 import csv
+import importlib
+from functools import partial
 import hashlib
 import json
 import logging
 import math
 import os
+import platform
+import random
 import re
+import subprocess
 import sys
 import time
+import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,10 +126,74 @@ KNOWN_LINUX_ROOTS = [
 def _split_all_parts(p: str) -> Tuple[str, ...]:
     return tuple([q for q in re.split(r"[\\/]+", str(p)) if q])
 
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _default_data_root() -> str:
+    env_root = str(os.environ.get("BATTERY_SOH_DINO_DATA_ROOT", "")).strip()
+    if env_root:
+        return env_root
+    return _platform_root()
+
+
+def _normalize_slashes(p: str) -> str:
+    return str(p).replace("\\", "/")
+
+
+def _is_explicit_path(p: str) -> bool:
+    s = str(p).strip()
+    return os.path.isabs(s) or bool(re.match(r"^[A-Za-z]:[\\/]", s))
+
+
+def _resolve_relative_data_path(p: str) -> str:
+    s = _normalize_slashes(p).strip()
+    if not s:
+        return s
+    rel = s.lstrip("./")
+    candidates: List[str] = []
+    env_root = str(os.environ.get("BATTERY_SOH_DINO_DATA_ROOT", "")).strip()
+    if env_root:
+        candidates.append(env_root)
+    candidates.extend(KNOWN_LINUX_ROOTS)
+    candidates.append(str(_repo_root()))
+    seen: set = set()
+    ordered: List[str] = []
+    for base in candidates:
+        b = str(base).strip()
+        if not b or b in seen:
+            continue
+        seen.add(b)
+        ordered.append(b)
+    for base in ordered:
+        out = os.path.normpath(os.path.join(base, rel))
+        if os.path.exists(out):
+            return out
+    return os.path.normpath(os.path.join(_default_data_root(), rel))
+
+
+def _to_portable_original_path(p: str) -> str:
+    s = _normalize_slashes(str(p).strip())
+    if not s:
+        return s
+    prefixes = [_default_data_root(), *KNOWN_LINUX_ROOTS, KNOWN_WIN_ROOT, "F:/", "F:\\"]
+    for prefix in prefixes:
+        q = _normalize_slashes(prefix).rstrip("/")
+        if not q:
+            continue
+        if s.lower().startswith((q + "/").lower()):
+            return s[len(q) + 1 :]
+        if s.lower() == q.lower():
+            return ""
+    return s
+
 def remap_known_root(p: str) -> str:
     s = str(p).strip()
     if not s:
         return s
+    if not _is_explicit_path(s):
+        return _resolve_relative_data_path(s)
     if PLATFORM_IS_WIN:
         # Map Linux mount root to Windows drive
         for root in KNOWN_LINUX_ROOTS:
@@ -170,6 +240,9 @@ def _platform_root() -> str:
     return KNOWN_LINUX_ROOTS[0]
 
 def _default_labels_csv() -> str:
+    portable = _repo_root() / "data" / "soh_classification_results_portable.csv"
+    if portable.exists():
+        return str(portable)
     return os.path.join(
         _platform_root(),
         "Battery",
@@ -214,6 +287,40 @@ def _setup_logging(log_path: Path, level: str = "INFO") -> None:
     LOGGER.handlers.clear()
     LOGGER.addHandler(fh)
     LOGGER.addHandler(sh)
+
+
+def _install_exception_logging() -> None:
+    def _hook(exc_type, exc_value, exc_tb) -> None:
+        text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        try:
+            LOGGER.error("UNHANDLED_EXCEPTION\n%s", text.rstrip())
+        except Exception:
+            pass
+        try:
+            sys.__stderr__.write(text)
+            sys.__stderr__.flush()
+        except Exception:
+            pass
+
+    sys.excepthook = _hook
+
+
+def _state_dict_to_cpu(state: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in state.items():
+        if hasattr(v, "detach"):
+            out[str(k)] = v.detach().cpu()
+        else:
+            out[str(k)] = v
+    return out
+
+
+def _save_torch_checkpoint_atomic(path: Path, payload: Dict[str, Any]) -> None:
+    import torch
+
+    tmp_path = Path(str(path) + ".tmp")
+    torch.save(payload, tmp_path)
+    os.replace(tmp_path, path)
 
 
 # ----------------------------
@@ -299,18 +406,6 @@ def _is_valid_npz(p: str) -> bool:
             return False
         if os.path.getsize(q) <= 0:
             return False
-        if not zipfile.is_zipfile(q):
-            return False
-        with np.load(q, allow_pickle=False) as z:
-            if "amotf" not in z.files:
-                return False
-        try:
-            with zipfile.ZipFile(q, "r") as zf:
-                names = zf.namelist()
-                if not any(str(n).endswith("amotf.npy") for n in names):
-                    return False
-        except Exception:
-            return False
         return True
     except Exception:
         return False
@@ -321,6 +416,7 @@ def _p_or_missing(p: str) -> str:
 
 
 def _set_seed(seed: int) -> None:
+    random.seed(seed)
     np.random.seed(seed)
     try:
         import torch
@@ -329,6 +425,110 @@ def _set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
     except Exception:
         pass
+
+
+def _configure_reproducibility(seed: int) -> Dict[str, Any]:
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    _set_seed(int(seed))
+    info: Dict[str, Any] = {
+        "seed": int(seed),
+        "pythonhashseed": os.environ.get("PYTHONHASHSEED", ""),
+        "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG", ""),
+    }
+    try:
+        import torch
+
+        if hasattr(torch.backends, "cudnn"):
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+            info["cudnn_deterministic"] = bool(torch.backends.cudnn.deterministic)
+            info["cudnn_benchmark"] = bool(torch.backends.cudnn.benchmark)
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+            info["torch_deterministic_algorithms"] = True
+            info["torch_deterministic_warn_only"] = True
+        except TypeError:
+            torch.use_deterministic_algorithms(True)
+            info["torch_deterministic_algorithms"] = True
+            info["torch_deterministic_warn_only"] = False
+        except Exception as e:
+            info["torch_deterministic_algorithms_error"] = str(e)
+        info["cuda_available"] = bool(torch.cuda.is_available())
+        info["cuda_device_count"] = int(torch.cuda.device_count()) if torch.cuda.is_available() else 0
+    except Exception as e:
+        info["torch_reproducibility_error"] = str(e)
+    return info
+
+
+def _seed_dataloader_worker(worker_id: int, *, base_seed: int) -> None:
+    worker_seed = int(base_seed) + int(worker_id)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+    try:
+        import torch
+
+        torch.manual_seed(worker_seed)
+        torch.cuda.manual_seed_all(worker_seed)
+    except Exception:
+        pass
+
+
+def _make_loader_kwargs(torch_mod: Any, *, seed: int, num_workers: int) -> Dict[str, Any]:
+    generator = torch_mod.Generator()
+    generator.manual_seed(int(seed))
+    kwargs: Dict[str, Any] = {
+        "num_workers": int(num_workers),
+        "pin_memory": bool(getattr(torch_mod.cuda, "is_available", lambda: False)()) and int(num_workers) <= 0,
+        "generator": generator,
+    }
+    if int(num_workers) > 0:
+        kwargs["worker_init_fn"] = partial(_seed_dataloader_worker, base_seed=int(seed))
+    return kwargs
+
+
+def _try_module_version(module_name: str) -> str:
+    try:
+        mod = importlib.import_module(module_name)
+        return str(getattr(mod, "__version__", "unknown"))
+    except Exception:
+        return "MISSING"
+
+
+def _git_head(repo_root: Path) -> str:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(repo_root), stderr=subprocess.DEVNULL)
+        return out.decode("utf-8", errors="replace").strip()
+    except Exception:
+        return "UNKNOWN"
+
+
+def _runtime_manifest(*, seed: int, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest: Dict[str, Any] = {
+        "command": list(sys.argv),
+        "cwd": os.getcwd(),
+        "script": str(Path(__file__).resolve()),
+        "repo_root": str(repo_root),
+        "data_root": _default_data_root(),
+        "python_executable": sys.executable,
+        "python_version": sys.version,
+        "platform": platform.platform(),
+        "git_commit": _git_head(repo_root),
+        "package_versions": {
+            "numpy": _try_module_version("numpy"),
+            "pandas": _try_module_version("pandas"),
+            "scikit_learn": _try_module_version("sklearn"),
+            "torch": _try_module_version("torch"),
+            "torchvision": _try_module_version("torchvision"),
+            "transformers": _try_module_version("transformers"),
+            "timm": _try_module_version("timm"),
+            "peft": _try_module_version("peft"),
+        },
+        "reproducibility": _configure_reproducibility(int(seed)),
+    }
+    if extra:
+        manifest.update(extra)
+    return manifest
 
 
 def _try_import_pil_image():
@@ -2117,12 +2317,12 @@ def train_dino_soh_classifier(
 ) -> int:
     StratifiedKFold, StratifiedShuffleSplit, _, _, _ = _ensure_sklearn()
 
+    runtime_manifest = _runtime_manifest(seed=int(seed))
+
     import torch
     import torch.nn as nn
     import torch.optim as optim
     from torch.utils.data import DataLoader, Subset
-
-    _set_seed(int(seed))
 
     split_indices_json = remap_known_root(str(split_indices_json or "").strip())
     exclude_samples_txt = str(exclude_samples_txt or "").strip() or _default_exclude_samples_txt()
@@ -2132,6 +2332,7 @@ def train_dino_soh_classifier(
     run_dir = Path(runs_root) / run_name / input_mode
     _ensure_dir(run_dir)
     _setup_logging(run_dir / "train.log")
+    _install_exception_logging()
     LOGGER.info("step=init_run run_dir=%s", str(run_dir))
     LOGGER.info("labels_csv=%s", str(labels_csv))
     LOGGER.info("input_mode=%s", str(input_mode))
@@ -2274,11 +2475,14 @@ def train_dino_soh_classifier(
                 "lora_targets": str(lora_targets),
                 "backbone": bb_name if bb_name else "per-fold",
                 "dropped": dropped,
+                "runtime_manifest": runtime_manifest,
             },
             f,
             ensure_ascii=False,
             indent=2,
         )
+    with open(run_dir / "run_manifest.json", "w", encoding="utf-8") as f:
+        json.dump(runtime_manifest, f, ensure_ascii=False, indent=2)
 
     ds = DualImageDataset(
         records,
@@ -2470,9 +2674,10 @@ def train_dino_soh_classifier(
             {"total": tot_te, "counts": _counts_to_label_dict(cnt_te), "ratios": {INV_LABEL.get(i, str(i)): float(rat_te[i]) for i in range(len(rat_te))}},
         )
 
-        train_loader = DataLoader(Subset(ds, tr_idx.tolist()), batch_size=int(batch_size), shuffle=True, num_workers=int(num_workers), pin_memory=True)
-        val_loader = DataLoader(Subset(ds, va_idx.tolist()), batch_size=int(batch_size), shuffle=False, num_workers=int(num_workers), pin_memory=True)
-        test_loader = DataLoader(Subset(ds, test_idx.tolist()), batch_size=int(batch_size), shuffle=False, num_workers=int(num_workers), pin_memory=True)
+        fold_seed = int(seed) + int(fold_id) * 10000
+        train_loader = DataLoader(Subset(ds, tr_idx.tolist()), batch_size=int(batch_size), shuffle=True, **_make_loader_kwargs(torch, seed=fold_seed + 1, num_workers=int(num_workers)))
+        val_loader = DataLoader(Subset(ds, va_idx.tolist()), batch_size=int(batch_size), shuffle=False, **_make_loader_kwargs(torch, seed=fold_seed + 2, num_workers=int(num_workers)))
+        test_loader = DataLoader(Subset(ds, test_idx.tolist()), batch_size=int(batch_size), shuffle=False, **_make_loader_kwargs(torch, seed=fold_seed + 3, num_workers=int(num_workers)))
 
         if finetune_backbone_effective or use_lora:
             bb, bb_name_local = _build_backbone(
@@ -2645,10 +2850,61 @@ def train_dino_soh_classifier(
             crit = nn.CrossEntropyLoss()
 
         best_score = -1e9
-        best_state = None
         best_epoch = -1
+        start_epoch = 0
+        best_pt_path = fold_dir / "best.pt"
+        last_pt_path = fold_dir / "last.pt"
+        if last_pt_path.is_file():
+            try:
+                resume_payload = torch.load(str(last_pt_path), map_location="cpu", weights_only=False)
+            except Exception:
+                LOGGER.exception("fold=%d stage=resume_load_failed path=%s", int(fold_id), str(last_pt_path))
+                resume_payload = None
+            if isinstance(resume_payload, dict):
+                ckpt_epoch = int(resume_payload.get("epoch", -1))
+                ckpt_input_channels = int(resume_payload.get("input_channels", ds_in_ch))
+                ckpt_target_epochs = int(resume_payload.get("epochs", epochs))
+                if ckpt_input_channels != int(ds_in_ch):
+                    LOGGER.warning(
+                        "fold=%d stage=resume_skip reason=input_channels_mismatch checkpoint=%d current=%d path=%s",
+                        int(fold_id),
+                        int(ckpt_input_channels),
+                        int(ds_in_ch),
+                        str(last_pt_path),
+                    )
+                elif ckpt_target_epochs > int(epochs):
+                    LOGGER.warning(
+                        "fold=%d stage=resume_skip reason=checkpoint_epochs_gt_requested checkpoint=%d requested=%d path=%s",
+                        int(fold_id),
+                        int(ckpt_target_epochs),
+                        int(epochs),
+                        str(last_pt_path),
+                    )
+                else:
+                    try:
+                        model.load_state_dict(resume_payload["model"])
+                        opt.load_state_dict(resume_payload["optimizer"])
+                        if sched is not None and resume_payload.get("scheduler") is not None:
+                            sched.load_state_dict(resume_payload["scheduler"])
+                        best_score = float(resume_payload.get("best_score", -1e9))
+                        best_epoch = int(resume_payload.get("best_epoch", -1))
+                        start_epoch = max(0, int(ckpt_epoch) + 1)
+                        LOGGER.info(
+                            "fold=%d stage=resume_loaded last_epoch=%d start_epoch=%d best_epoch=%d best_score=%.4f path=%s",
+                            int(fold_id),
+                            int(ckpt_epoch),
+                            int(start_epoch),
+                            int(best_epoch),
+                            float(best_score),
+                            str(last_pt_path),
+                        )
+                    except Exception:
+                        LOGGER.exception("fold=%d stage=resume_restore_failed path=%s", int(fold_id), str(last_pt_path))
+                        best_score = -1e9
+                        best_epoch = -1
+                        start_epoch = 0
 
-        for ep in range(int(epochs)):
+        for ep in range(int(start_epoch), int(epochs)):
             model.train(True)
             loss_sum = 0.0
             n = 0
@@ -2695,17 +2951,50 @@ def train_dino_soh_classifier(
             if score > best_score:
                 best_score = score
                 best_epoch = ep
-                best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                _save_torch_checkpoint_atomic(
+                    best_pt_path,
+                    {
+                        "model": _state_dict_to_cpu(model.state_dict()),
+                        "best_epoch": int(best_epoch),
+                        "best_score": float(best_score),
+                        "epoch": int(ep),
+                    },
+                )
 
-        if best_state is not None:
-            model.load_state_dict(best_state)
+            _save_torch_checkpoint_atomic(
+                last_pt_path,
+                {
+                    "epoch": int(ep),
+                    "epochs": int(epochs),
+                    "model": _state_dict_to_cpu(model.state_dict()),
+                    "optimizer": opt.state_dict(),
+                    "scheduler": sched.state_dict() if sched is not None else None,
+                    "best_epoch": int(best_epoch),
+                    "best_score": float(best_score),
+                    "input_channels": int(ds_in_ch),
+                },
+            )
+
+        if best_pt_path.is_file():
+            best_payload = torch.load(str(best_pt_path), map_location="cpu", weights_only=False)
+            if isinstance(best_payload, dict) and isinstance(best_payload.get("model"), dict):
+                model.load_state_dict(best_payload["model"])
+                best_epoch = int(best_payload.get("best_epoch", best_epoch))
+                best_score = float(best_payload.get("best_score", best_score))
+        elif last_pt_path.is_file():
+            LOGGER.warning("fold=%d stage=best_checkpoint_missing_using_last path=%s", int(fold_id), str(last_pt_path))
+        else:
+            LOGGER.warning("fold=%d stage=no_checkpoint_found_using_current_model", int(fold_id))
 
         yv_true, yv_prob = _eval_probs(model, val_loader, device)
         yt_true, yt_prob = _eval_probs(model, test_loader, device)
         mv = _metrics_from_probs(yv_true, yv_prob)
         mt = _metrics_from_probs(yt_true, yt_prob)
 
-        torch.save({"model": model.state_dict(), "best_epoch": int(best_epoch), "best_score": float(best_score)}, fold_dir / "best.pt")
+        _save_torch_checkpoint_atomic(
+            best_pt_path,
+            {"model": _state_dict_to_cpu(model.state_dict()), "best_epoch": int(best_epoch), "best_score": float(best_score)},
+        )
         # 保存错误的case
         val_bad = _bad_cases(
             records=records,
@@ -3395,7 +3684,7 @@ def _write_labels_subset(in_labels_csv: str, original_paths_keep: set, out_csv: 
             keep_rows.append(
                 {
                     "sample_id": str(r.get("sample_id", "")).strip(),
-                    "original_path": op,
+                    "original_path": _to_portable_original_path(str(r.get("original_path", "")).strip() or op),
                     "assigned_class": str(r.get("assigned_class", "")).strip(),
                 }
             )
@@ -3513,7 +3802,7 @@ def main() -> int:
     ap_train.add_argument("--seed", type=int, default=42)
     ap_train.add_argument("--img_size", type=int, default=224)
     ap_train.add_argument("--batch_size", type=int, default=24)
-    ap_train.add_argument("--epochs", type=int, default=10)
+    ap_train.add_argument("--epoch", "--epochs", dest="epochs", type=int, default=10)
     ap_train.add_argument("--lr", type=float, default=5e-4)
     ap_train.add_argument("--weight_decay", type=float, default=1e-4)
     ap_train.add_argument("--lr_scheduler", choices=["none", "cosine", "cosine_warmup", "onecycle", "plateau"], default="none")
@@ -3522,7 +3811,7 @@ def main() -> int:
     ap_train.add_argument("--lr_plateau_factor", type=float, default=0.5)
     ap_train.add_argument("--lr_plateau_patience", type=int, default=2)
     ap_train.add_argument("--backbone_lr_mult", type=float, default=1.0)
-    ap_train.add_argument("--num_workers", type=int, default=4)
+    ap_train.add_argument("--num_workers", type=int, default=0)
     ap_train.add_argument("--fusion", choices=["concat", "stack"], default="concat")
     ap_train.add_argument("--val_ratio", type=float, default=0.2)
     ap_train.add_argument("--metric_for_best", choices=["macro_f1", "acc"], default="macro_f1")
@@ -3562,7 +3851,7 @@ def main() -> int:
     ap_all.add_argument("--seed", type=int, default=42)
     ap_all.add_argument("--img_size", type=int, default=224)
     ap_all.add_argument("--batch_size", type=int, default=24)
-    ap_all.add_argument("--epochs", type=int, default=10)
+    ap_all.add_argument("--epoch", "--epochs", dest="epochs", type=int, default=10)
     ap_all.add_argument("--lr", type=float, default=5e-4)
     ap_all.add_argument("--weight_decay", type=float, default=1e-4)
     ap_all.add_argument("--lr_scheduler", choices=["none", "cosine", "cosine_warmup", "onecycle", "plateau"], default="none")
@@ -3571,7 +3860,7 @@ def main() -> int:
     ap_all.add_argument("--lr_plateau_factor", type=float, default=0.5)
     ap_all.add_argument("--lr_plateau_patience", type=int, default=2)
     ap_all.add_argument("--backbone_lr_mult", type=float, default=1.0)
-    ap_all.add_argument("--num_workers", type=int, default=4)
+    ap_all.add_argument("--num_workers", type=int, default=0)
     ap_all.add_argument("--fusion", choices=["concat", "stack"], default="concat")
     ap_all.add_argument("--val_ratio", type=float, default=0.2)
     ap_all.add_argument("--metric_for_best", choices=["macro_f1", "acc"], default="macro_f1")
@@ -3630,6 +3919,8 @@ def main() -> int:
         run_root = Path(args.runs_root) / run_name
         _ensure_dir(run_root)
         _setup_logging(run_root / "run_all.log")
+        with open(run_root / "run_all_manifest.json", "w", encoding="utf-8") as f:
+            json.dump(_runtime_manifest(seed=int(args.seed), extra={"args": vars(args), "spans": spans}), f, ensure_ascii=False, indent=2)
 
         LOGGER.info("run_all run_name=%s", run_name)
         LOGGER.info("step=build_amotf")
