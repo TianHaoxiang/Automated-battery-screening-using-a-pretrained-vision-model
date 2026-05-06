@@ -60,6 +60,9 @@ def _default_stability_split_indices_json() -> str:
     env = str(os.environ.get("BATTERY_SOH_STABILITY_SPLIT_JSON", "")).strip()
     if env:
         return env
+    bundled = PROJECT_ROOT / "data" / "stability_fold1_split_indices.json"
+    if bundled.is_file():
+        return str(bundled)
     return os.path.join(_default_runs_root(), "run_20260505_011002", "amotf_npz", "fold_1", "split_indices.json")
 
 

@@ -1,18 +1,45 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
 
-# Data
+# Jupyter / IDE
+.ipynb_checkpoints/
+.idea/
+.vscode/
+
+# Secrets / local env (never commit tokens)
+.env
+.env.*
+*.pem
+
+# Data (keep small tracked metadata only)
 data/*
 !data/soh_classification_results_portable.csv
+!data/stability_fold1_split_indices.json
 outputs/
+
+# Release staging (local tarballs / manifests)
+release_staging/
 
 # Logs
 *.log
 
-# Models
+# Models / checkpoints (large; use Zenodo if sharing)
 *.pt
 *.pth
+*.ckpt
+*.safetensors
 
 # System
 .DS_Store
+Thumbs.db

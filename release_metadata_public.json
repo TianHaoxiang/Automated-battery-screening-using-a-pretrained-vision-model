@@ -1,0 +1,39 @@
+{
+  "project_name": "battery-soh-dino",
+  "github_repository": "https://github.com/TianHaoxiang/battery-soh-dino",
+  "zenodo_record": "https://zenodo.org/records/20054162",
+  "doi": "10.5281/zenodo.20054162",
+  "release_date": "2026-05-06",
+  "project_directory": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino",
+  "complete_dataset_path": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/Battery_Archive",
+  "extract_feature_output_path": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/Battery_Archive/outputs_analysis/features",
+  "labels_csv_portable": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/data/soh_classification_results_portable.csv",
+  "labels_csv_original_local": "/mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv",
+  "extract_feature_record_count": 20295,
+  "npz_layout": {
+    "charge": "{original_path}/amotf/amotf_charge.npz",
+    "discharge": "{original_path}/amotf/amotf_discharge.npz",
+    "count_charge": 20295,
+    "count_discharge": 20295,
+    "count_total": 40590
+  },
+  "training_metadata_layout": {
+    "metadata_json": "<runs_root>/<run_name>/<input_mode>/metadata.json",
+    "run_manifest_json": "<runs_root>/<run_name>/<input_mode>/run_manifest.json",
+    "summary_json": "<runs_root>/<run_name>/<input_mode>/summary.json",
+    "split_indices_json": "<runs_root>/<run_name>/<input_mode>/fold_*/split_indices.json"
+  },
+  "zenodo_files": {
+    "project_archive": "battery-soh-dino_project_20260506.tar.gz",
+    "complete_dataset_archive": "battery-soh-dino_complete_dataset_20260506.tar.gz",
+    "extract_feature_archive": "battery-soh-dino_extract_feature_outputs_20260506.tar.gz",
+    "release_materials_archive": "battery-soh-dino_release_materials_20260506.tar.gz"
+  },
+  "reproduction_commands": {
+    "extract_features": "python run_battery_soh_dino.py extract_features",
+    "build_amotf": "python run_battery_soh_dino.py build_amotf --labels_csv data/soh_classification_results_portable.csv",
+    "train": "python run_battery_soh_dino.py train --labels_csv data/soh_classification_results_portable.csv --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs --run_name exp_full_soc_horizontal_npz --input_mode amotf_npz --finetune_backbone --lr 5e-4 --npz_norm log1p_global --npz_global_max_log 10.0 --use_class_weights --backbone_lr_mult 0.1 --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 --epochs 50 --num_workers 0",
+    "stability_fold1": "python run_battery_soh_dino.py stability_fold1 --epochs 50",
+    "dataset_sweep": "python run_battery_soh_dino.py dataset_sweep --labels_csv data/soh_classification_results_portable.csv --runs_root /mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_amotf_dino_runs --run_name exp_dataset_sweep --finetune_backbone --lr 5e-4 --epochs 50 --num_workers 0"
+  }
+}

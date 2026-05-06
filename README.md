@@ -60,6 +60,24 @@ Public cycling metadata and archives compatible with this workflow are published
 
 * [Battery Archive — cycling tests (list view)](https://www.batteryarchive.org/cycle_list.html?t=0001)
 
+## 2.1 Public release links
+
+The canonical public code repository for this project is:
+
+* GitHub repository: [https://github.com/TianHaoxiang/battery-soh-dino](https://github.com/TianHaoxiang/battery-soh-dino)
+
+The Zenodo public release record for the code-and-data package is:
+
+* Zenodo record: [https://zenodo.org/records/20054162](https://zenodo.org/records/20054162)
+* DOI: `10.5281/zenodo.20054162`
+
+Release files published through that Zenodo record:
+
+* Full project archive: [battery-soh-dino_project_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_project_20260506.tar.gz?download=1)
+* Full dataset archive: [battery-soh-dino_complete_dataset_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_complete_dataset_20260506.tar.gz?download=1)
+* Extracted-feature archive: [battery-soh-dino_extract_feature_outputs_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_extract_feature_outputs_20260506.tar.gz?download=1)
+* Labels / release metadata bundle: [battery-soh-dino_release_materials_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_release_materials_20260506.tar.gz?download=1)
+
 Use the scripts in `extract_feature/` to export cells and build intermediate feature/sample tables. Downstream training still expects a final **labels CSV** with columns such as:
 
 * `sample_id`
@@ -448,4 +466,4 @@ Included today:
 ## License
 
 No license file has been added yet.  
-If you plan to make the project public for wider reuse, adding a license is recommended.
+
