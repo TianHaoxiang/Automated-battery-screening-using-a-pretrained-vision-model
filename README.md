@@ -1,4 +1,4 @@
-# battery-soh-dino
+# Automated-battery-screening-using-a-pretrained-vision-model
 
 Battery state-of-health (SOH) classification from voltage/current cycling data, using **amplitude-aware multi-span ordinal transition field (AMOTF)** tensors and a **DINOv3-style** pretrained vision backbone. The pipeline turns 1D curves into image-like tensors (including compressed NPZ variants), then trains a classifier with optional backbone fine-tuning, class weighting, and cross-dataset sweep utilities. It is designed to work with metadata and exports aligned with **Battery Archive**–style cell and cycle tables.
 
