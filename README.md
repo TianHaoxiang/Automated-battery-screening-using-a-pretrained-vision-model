@@ -78,6 +78,11 @@ Release files published through that Zenodo record:
 * Extracted-feature archive: [battery-soh-dino_extract_feature_outputs_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_extract_feature_outputs_20260506.tar.gz?download=1)
 * Labels / release metadata bundle: [battery-soh-dino_release_materials_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_release_materials_20260506.tar.gz?download=1)
 
+The repository itself also tracks the lightweight, GitHub-hosted dataset files under `data/`:
+
+* `data/soh_classification_results_portable.csv` — portable final labels table bundled with the repository. It currently contains the 20225-sample ordered subset aligned to `exp_full_finetune_run_all/labels_intersection.csv` and preserves the published metadata columns such as `sample_id`, `cycle_index`, `original_path`, `matched_cell_id`, `nominal_capacity`, `measured_capacity`, `soh`, `assigned_class`, `copy_status`, and `issues`.
+* `data/stability_fold1_split_indices.json` — fixed single-fold split definition for the same 20225-row ordering as `data/soh_classification_results_portable.csv`. It stores `train_idx`, `val_idx`, and `test_idx`, and is the default split consumed by `python run_battery_soh_dino.py stability_fold1 --epochs 50`.
+
 Use the scripts in `extract_feature/` to export cells and build intermediate feature/sample tables. Downstream training still expects a final **labels CSV** with columns such as:
 
 * `sample_id`
@@ -122,6 +127,7 @@ If you have your own absolute-path labels file and want to convert it into the p
 ```bash
 python run_battery_soh_dino.py make_portable_labels \
   --in_labels_csv /absolute/path/to/soh_classification_results.csv \
+  --reference_labels_csv /absolute/path/to/labels_intersection.csv \
   --out_labels_csv data/soh_classification_results_portable.csv
 ```
 
@@ -155,7 +161,13 @@ data/soh_classification_results_portable.csv
 The original local file used to generate it was:
 
 ```text
-/mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv
+/mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_cmaotn_dino_runs/exp_full_finetune_run_all/labels_intersection.csv
+```
+
+The bundled fixed split file paired with that labels table is:
+
+```text
+data/stability_fold1_split_indices.json
 ```
 
 ### 3.2 Full-data AMOTF build

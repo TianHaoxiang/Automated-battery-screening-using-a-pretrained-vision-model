@@ -41,6 +41,17 @@ def _default_source_labels_csv() -> str:
     return os.path.join(_default_project_root(), "no_title_outputs", "features", "soh_classification_results.csv")
 
 
+def _default_reference_labels_csv() -> str:
+    cand = os.path.join(
+        _default_project_root(),
+        "no_title_outputs",
+        "soh_cmaotn_dino_runs",
+        "exp_full_finetune_run_all",
+        "labels_intersection.csv",
+    )
+    return cand if os.path.isfile(cand) else ""
+
+
 def _default_labels_csv() -> str:
     portable = _default_portable_labels_csv()
     if os.path.exists(portable):
@@ -100,7 +111,7 @@ def _strip_known_data_root(p: str) -> str:
     return s
 
 
-def _write_portable_labels_csv(*, in_labels_csv: str, out_labels_csv: str) -> None:
+def _write_portable_labels_csv(*, in_labels_csv: str, out_labels_csv: str, reference_labels_csv: str = "") -> None:
     src = Path(in_labels_csv)
     if not src.exists():
         raise FileNotFoundError(str(src))
@@ -109,9 +120,31 @@ def _write_portable_labels_csv(*, in_labels_csv: str, out_labels_csv: str) -> No
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or [])
         for row in reader:
-            row = dict(row)
-            row["original_path"] = _strip_known_data_root(str(row.get("original_path", "")).strip())
-            rows.append(row)
+            rows.append(dict(row))
+    ref_path = Path(str(reference_labels_csv).strip()) if str(reference_labels_csv).strip() else None
+    if ref_path and ref_path.exists():
+        by_sid: Dict[str, dict] = {}
+        for row in rows:
+            sid = str(row.get("sample_id", "")).strip()
+            if sid and sid not in by_sid:
+                by_sid[sid] = dict(row)
+        ordered_rows: List[dict] = []
+        missing_sids: List[str] = []
+        with open(ref_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+            for ref_row in csv.DictReader(f):
+                sid = str(ref_row.get("sample_id", "")).strip()
+                if not sid:
+                    continue
+                base_row = by_sid.get(sid)
+                if base_row is None:
+                    missing_sids.append(sid)
+                    continue
+                ordered_rows.append(dict(base_row))
+        if missing_sids:
+            raise ValueError(f"reference_labels_csv contains sample_id values not found in source labels: {missing_sids[:5]}")
+        rows = ordered_rows
+    for row in rows:
+        row["original_path"] = _strip_known_data_root(str(row.get("original_path", "")).strip())
     dst = Path(out_labels_csv)
     dst.parent.mkdir(parents=True, exist_ok=True)
     with open(dst, "w", encoding="utf-8", newline="") as f:
@@ -336,6 +369,7 @@ def main() -> int:
     ap_portable = sub.add_parser("make_portable_labels", help="Create a repo-local portable labels CSV with relative original_path values")
     ap_portable.add_argument("--in_labels_csv", type=str, default=_default_source_labels_csv())
     ap_portable.add_argument("--out_labels_csv", type=str, default=_default_portable_labels_csv())
+    ap_portable.add_argument("--reference_labels_csv", type=str, default=_default_reference_labels_csv())
     sub.add_parser("print_defaults", help="Print default paths used in the README examples")
 
     ap_stab = sub.add_parser(
@@ -362,8 +396,8 @@ def main() -> int:
     ap_stab.add_argument(
         "--exclude_samples_txt",
         type=str,
-        default=_default_exclude_samples_txt(),
-        help="Passed only if this file exists.",
+        default="",
+        help="Optional. Passed through only if this file exists.",
     )
     ap_stab.add_argument("--seed", type=int, default=42)
     ap_stab.add_argument("--epochs", type=int, default=50)
@@ -391,12 +425,17 @@ def main() -> int:
         print("DEFAULT_FEATURE_OUT_DIR=", _default_feature_out_dir())
         print("DEFAULT_SOURCE_LABELS_CSV=", _default_source_labels_csv())
         print("DEFAULT_PORTABLE_LABELS_CSV=", _default_portable_labels_csv())
+        print("DEFAULT_REFERENCE_LABELS_CSV=", _default_reference_labels_csv())
         print("DEFAULT_LABELS_CSV=", _default_labels_csv())
         print("DEFAULT_RUNS_ROOT=", _default_runs_root())
         return 0
 
     if args.cmd == "make_portable_labels":
-        _write_portable_labels_csv(in_labels_csv=str(args.in_labels_csv), out_labels_csv=str(args.out_labels_csv))
+        _write_portable_labels_csv(
+            in_labels_csv=str(args.in_labels_csv),
+            out_labels_csv=str(args.out_labels_csv),
+            reference_labels_csv=str(getattr(args, "reference_labels_csv", "")),
+        )
         print("PORTABLE_LABELS_CSV=", str(Path(args.out_labels_csv).resolve()))
         return 0
 

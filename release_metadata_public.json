@@ -8,7 +8,7 @@
   "complete_dataset_path": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/Battery_Archive",
   "extract_feature_output_path": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/Battery_Archive/outputs_analysis/features",
   "labels_csv_portable": "/mnt/sdb/THX/Battery_THX_HP_P9000/Battery/dataset/Tao/Battery_Archive/scripts/battery-soh-dino/data/soh_classification_results_portable.csv",
-  "labels_csv_original_local": "/mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/features/soh_classification_results.csv",
+  "labels_csv_original_local": "/mnt/sdb/THX/Battery_THX_HP_P9000/no_title_outputs/soh_cmaotn_dino_runs/exp_full_finetune_run_all/labels_intersection.csv",
   "extract_feature_record_count": 20295,
   "npz_layout": {
     "charge": "{original_path}/amotf/amotf_charge.npz",

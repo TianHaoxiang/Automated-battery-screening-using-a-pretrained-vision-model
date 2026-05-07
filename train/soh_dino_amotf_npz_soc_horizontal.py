@@ -2413,7 +2413,9 @@ def train_dino_soh_classifier(
     from torch.utils.data import DataLoader, Subset
 
     split_indices_json = remap_known_root(str(split_indices_json or "").strip())
-    exclude_samples_txt = str(exclude_samples_txt or "").strip() or _default_exclude_samples_txt()
+    exclude_samples_txt = str(exclude_samples_txt or "").strip()
+    if (not exclude_samples_txt) and (not split_indices_json):
+        exclude_samples_txt = _default_exclude_samples_txt()
 
     if not run_name:
         run_name = _now_run_name()
@@ -3682,7 +3684,7 @@ def main() -> int:
     ap_train.add_argument("--max_points", type=int, default=2000)
     ap_train.add_argument("--kfold", type=int, default=5)
     ap_train.add_argument("--split_indices_json", type=str, default="")
-    ap_train.add_argument("--exclude_samples_txt", type=str, default=_default_exclude_samples_txt())
+    ap_train.add_argument("--exclude_samples_txt", type=str, default="")
     ap_train.add_argument("--seed", type=int, default=42)
     ap_train.add_argument("--img_size", type=int, default=224)
     ap_train.add_argument("--batch_size", type=int, default=24)
@@ -3744,7 +3746,7 @@ def main() -> int:
     ap_all.add_argument("--num_workers_build", type=int, default=0)
     ap_all.add_argument("--kfold", type=int, default=5)
     ap_all.add_argument("--split_indices_json", type=str, default="")
-    ap_all.add_argument("--exclude_samples_txt", type=str, default=_default_exclude_samples_txt())
+    ap_all.add_argument("--exclude_samples_txt", type=str, default="")
     ap_all.add_argument("--seed", type=int, default=42)
     ap_all.add_argument("--img_size", type=int, default=224)
     ap_all.add_argument("--batch_size", type=int, default=24)
