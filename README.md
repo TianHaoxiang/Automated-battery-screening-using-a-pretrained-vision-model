@@ -64,7 +64,7 @@ Public cycling metadata and archives compatible with this workflow are published
 
 The canonical public code repository for this project is:
 
-* GitHub repository: [https://github.com/TianHaoxiang/battery-soh-dino](https://github.com/TianHaoxiang/battery-soh-dino)
+* GitHub repository: [https://github.com/TianHaoxiang/Automated-battery-screening-using-a-pretrained-vision-model](https://github.com/TianHaoxiang/Automated-battery-screening-using-a-pretrained-vision-model)
 
 The Zenodo public release record for the code-and-data package is:
 
