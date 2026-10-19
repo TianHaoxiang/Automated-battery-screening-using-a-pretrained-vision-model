@@ -1,8 +1,9 @@
 {
   "project_name": "battery-soh-dino",
   "github_repository": "https://github.com/TianHaoxiang/Automated-battery-screening-using-a-pretrained-vision-model",
-  "zenodo_record": "https://zenodo.org/records/20054162",
-  "doi": "10.5281/zenodo.20054162",
+  "zenodo_record": "https://zenodo.org/records/23472010",
+  "doi": "10.5281/zenodo.23472010",
+  "version": "v2",
   "release_date": "2026-10-19",
   "amotf_version": "AMOTF v2 dense_field_m5",
   "amotf_builder_sha256": "4f2c8b05f3e4669ad8924cded567850e5c50c63c4ec47e7467241afada53e560",
@@ -27,10 +28,10 @@
     "split_indices_json": "<runs_root>/<run_name>/<input_mode>/fold_*/split_indices.json"
   },
   "zenodo_files": {
-    "project_archive": "battery-soh-dino_project_20260506.tar.gz",
+    "project_archive": "battery-soh-dino_project_amotfv2_20261019.tar.gz",
     "complete_dataset_archive": "battery-soh-dino_complete_dataset_20260506.tar.gz",
     "extract_feature_archive": "battery-soh-dino_extract_feature_outputs_20260506.tar.gz",
-    "release_materials_archive": "battery-soh-dino_release_materials_20260506.tar.gz"
+    "release_materials_archive": "battery-soh-dino_release_materials_amotfv2_20261019.tar.gz"
   },
   "reproduction_commands": {
     "extract_features": "python run_battery_soh_dino.py extract_features",

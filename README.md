@@ -68,15 +68,15 @@ The canonical public code repository for this project is:
 
 The Zenodo public release record for the code-and-data package is:
 
-* Zenodo record: [https://zenodo.org/records/20054162](https://zenodo.org/records/20054162)
-* DOI: `10.5281/zenodo.20054162`
+* Zenodo record: [https://zenodo.org/records/23472010](https://zenodo.org/records/23472010)
+* DOI: `10.5281/zenodo.23472010`
 
 Release files published through that Zenodo record:
 
-* Full project archive: [battery-soh-dino_project_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_project_20260506.tar.gz?download=1)
-* Full dataset archive: [battery-soh-dino_complete_dataset_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_complete_dataset_20260506.tar.gz?download=1)
-* Extracted-feature archive: [battery-soh-dino_extract_feature_outputs_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_extract_feature_outputs_20260506.tar.gz?download=1)
-* Labels / release metadata bundle: [battery-soh-dino_release_materials_20260506.tar.gz](https://zenodo.org/records/20054162/files/battery-soh-dino_release_materials_20260506.tar.gz?download=1)
+* Full project archive: [battery-soh-dino_project_amotfv2_20261019.tar.gz](https://zenodo.org/records/23472010/files/battery-soh-dino_project_amotfv2_20261019.tar.gz?download=1)
+* Full dataset archive: [battery-soh-dino_complete_dataset_20260506.tar.gz](https://zenodo.org/records/23472010/files/battery-soh-dino_complete_dataset_20260506.tar.gz?download=1)
+* Extracted-feature archive: [battery-soh-dino_extract_feature_outputs_20260506.tar.gz](https://zenodo.org/records/23472010/files/battery-soh-dino_extract_feature_outputs_20260506.tar.gz?download=1)
+* Labels / release metadata bundle: [battery-soh-dino_release_materials_amotfv2_20261019.tar.gz](https://zenodo.org/records/23472010/files/battery-soh-dino_release_materials_amotfv2_20261019.tar.gz?download=1)
 
 The repository itself also tracks the lightweight, GitHub-hosted dataset files under `data/`:
 
