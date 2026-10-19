@@ -1,10 +1,10 @@
 # Automated-battery-screening-using-a-pretrained-vision-model
 
-Battery state-of-health (SOH) classification from voltage/current cycling data, using **amplitude-aware multi-span ordinal transition field (AMOTF)** tensors and a **DINOv3-style** pretrained vision backbone. The pipeline turns 1D curves into image-like tensors (including compressed NPZ variants), then trains a classifier with optional backbone fine-tuning, class weighting, and cross-dataset sweep utilities. It is designed to work with metadata and exports aligned with **Battery Archive**–style cell and cycle tables.
+Battery state-of-health (SOH) classification from voltage/current cycling data, using the Cursor-locked **AMOTF v2 `dense_field_m5`** representation and a **DINOv3-style** pretrained vision backbone. The pipeline turns 1D curves into dense image-like tensors, then trains a classifier with optional backbone fine-tuning, class weighting, and cross-dataset sweep utilities. It is designed to work with metadata and exports aligned with **Battery Archive**–style cell and cycle tables.
 
 ## Highlights
 
-* Structured conversion of 1D battery voltage/current curves into AMOTF tensors (PNG / NPZ).
+* Reproducible conversion of 1D battery voltage/current curves into verified AMOTF v2 tensors.
 * SOH classification with Hugging Face backbones and optional LoRA / full fine-tuning.
 * Command-line workflows for AMOTF building, `train` / `run_all`, and progressive **dataset-sweep** experiments.
 * Feature-export scripts under `extract_feature/` for preparing labels and paths from multi-source archives.
@@ -107,6 +107,28 @@ If the environment variable is not set, the scripts fall back to the built-in pa
 
 ## 3. Reproducible workflow from the repository root
 
+### AMOTF v2 implementation
+
+The default representation is `dense_field_m5`, numerically verified against the locked Cursor/server88 artifacts. Its settings are:
+
+* charge and discharge encoded separately as `120 x 120 x 8` tensors;
+* ordinal embedding `m=5`, `tau=1`, spans `1,2,4,8`;
+* voltage: duplicate-aware SOC resampling followed by min-max normalization;
+* current: duplicate-aware SOC resampling followed by max-absolute normalization;
+* descending discharge direction is retained;
+* weighted ordinal transitions use `1 + mean(abs(sorted(window_i) - sorted(window_j)))`;
+* dense transition projection, signed pairwise difference, and EMD components are mixed with weights `0.50/0.25/0.25`;
+* each output channel is min-max normalized to `[0,1]`;
+* training applies `log1p` followed by per-image, per-channel min-max normalization.
+
+The locked builder is [`tools/build_amotf_v2_dense.py`](tools/build_amotf_v2_dense.py), whose SHA-256 is:
+
+```text
+4f2c8b05f3e4669ad8924cded567850e5c50c63c4ec47e7467241afada53e560
+```
+
+Generated tensors are written to `amotf_v2_dense_m5/` by default. Set `BATTERY_SOH_ENCODING_DIR` only when a different output directory is required.
+
 All public workflows can now be launched from the repository root with:
 
 ```bash
@@ -120,6 +142,7 @@ For portable reruns on another machine, set the data root once before running an
 
 ```bash
 export BATTERY_SOH_DINO_DATA_ROOT=/path/to/THX-or-equivalent-root
+export BATTERY_SOH_ENCODING_DIR=amotf_v2_dense_m5
 ```
 
 If you have your own absolute-path labels file and want to convert it into the portable format used by this repository:
@@ -174,7 +197,8 @@ data/stability_fold1_split_indices.json
 
 ```bash
 python run_battery_soh_dino.py build_amotf \
-  --labels_csv data/soh_classification_results_portable.csv
+  --labels_csv data/soh_classification_results_portable.csv \
+  --num_workers 8
 ```
 
 ### 3.3 Full-data training
@@ -187,8 +211,7 @@ python run_battery_soh_dino.py train \
   --input_mode amotf_npz \
   --finetune_backbone \
   --lr 5e-4 \
-  --npz_norm log1p_global \
-  --npz_global_max_log 10.0 \
+  --npz_norm log1p_minmax \
   --use_class_weights \
   --backbone_lr_mult 0.1 \
   --lr_scheduler cosine_warmup \
@@ -219,8 +242,7 @@ python run_battery_soh_dino.py run_all \
   --run_name exp_full_finetune_run_all \
   --finetune_backbone \
   --lr 5e-4 \
-  --npz_norm log1p_global \
-  --npz_global_max_log 10.0 \
+  --npz_norm log1p_minmax \
   --use_class_weights \
   --backbone_lr_mult 0.1 \
   --lr_scheduler cosine_warmup \
@@ -257,7 +279,7 @@ python train/soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py dat
   --use_class_weights \
   --lr 5e-4 --backbone_lr_mult 0.1 \
   --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 \
-  --npz_norm log1p_global --npz_global_max_log 10.0 \
+  --npz_norm log1p_minmax \
   --hf_local_only
 ```
 
@@ -275,7 +297,7 @@ python train/soh_dino_amotf_npz_dataset_cycles_all_classes_soc_horizontal.py dat
   --use_class_weights \
   --lr 5e-4 --backbone_lr_mult 0.1 \
   --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 \
-  --npz_norm log1p_global --npz_global_max_log 10.0 \
+  --npz_norm log1p_minmax \
   --hf_local_only
 ```
 
@@ -393,8 +415,7 @@ python run_battery_soh_dino.py run_all \
   --run_name exp_full_finetune_run_all \
   --finetune_backbone \
   --lr 5e-4 \
-  --npz_norm log1p_global \
-  --npz_global_max_log 10.0 \
+  --npz_norm log1p_minmax \
   --use_class_weights \
   --backbone_lr_mult 0.1 \
   --lr_scheduler cosine_warmup \
@@ -411,6 +432,9 @@ python run_battery_soh_dino.py run_all \
 ```text
 battery-soh-dino/
 ├── run_battery_soh_dino.py
+├── tools/
+│   ├── build_amotf_v2_dense.py
+│   └── amotf_v2_normalization.py
 ├── extract_feature/
 │   ├── _bootstrap.py
 │   ├── export_batteryarchive_all_cells.py

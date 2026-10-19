@@ -307,7 +307,7 @@ def _stability_fold1_train_cmd(
         "--chan_dropout",
         "0.0",
         "--npz_norm",
-        "log1p_global",
+        "log1p_minmax",
         "--npz_global_max_log",
         "10.0",
         "--finetune_backbone",
@@ -344,7 +344,7 @@ def main() -> int:
             "Examples:\n"
             f"  python run_battery_soh_dino.py extract_features --datasets CALCE --max_cells 2\n"
             f"  python run_battery_soh_dino.py build_amotf --labels_csv {_default_labels_csv()}\n"
-            f"  python run_battery_soh_dino.py run_all --labels_csv {_default_labels_csv()} --runs_root {_default_runs_root()} --run_name exp_full_finetune_run_all --finetune_backbone --lr 5e-4 --npz_norm log1p_global --npz_global_max_log 10.0 --use_class_weights --backbone_lr_mult 0.1 --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 --epochs 50\n"
+            f"  python run_battery_soh_dino.py run_all --labels_csv {_default_labels_csv()} --runs_root {_default_runs_root()} --run_name exp_full_finetune_run_all --finetune_backbone --lr 5e-4 --npz_norm log1p_minmax --npz_global_max_log 10.0 --use_class_weights --backbone_lr_mult 0.1 --lr_scheduler cosine_warmup --lr_warmup_ratio 0.1 --lr_min 1e-6 --epochs 50\n"
             f"  python run_battery_soh_dino.py dataset_sweep --labels_csv {_default_labels_csv()} --runs_root {_default_runs_root()} --run_name exp_dataset_sweep --finetune_backbone --lr 5e-4 --epochs 50\n"
             f"  python run_battery_soh_dino.py --dry_run stability_fold1\n"
             f"  conda activate dinov3 && python run_battery_soh_dino.py stability_fold1\n"

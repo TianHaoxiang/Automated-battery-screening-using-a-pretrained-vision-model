@@ -67,7 +67,7 @@
 #   --chan_hidden 0 \
 #   --chan_norm group \
 #   --chan_dropout 0.0 \
-#   --npz_norm log1p_global \
+#   --npz_norm log1p_minmax \
 #   --npz_global_max_log 10.0 \
 #   --finetune_backbone \
 #   --use_class_weights \
@@ -665,43 +665,21 @@ def calculate_emd_weight(window_a_sorted: np.ndarray, window_b_sorted: np.ndarra
 
 
 def build_amotf_single_modality(series: np.ndarray, m: int, tau: int, span_set: List[int]) -> np.ndarray:
-    # 预处理,去除异常值
-    x = np.asarray(series, dtype=float)
-    x = x[np.isfinite(x)]
-    n = int(x.size)
-    # 计算模式数
-    num_patterns = math.factorial(int(m))
-    # 窗口长度
-    if n < (m - 1) * tau + 1:
-        return np.zeros((num_patterns, num_patterns, len(span_set)), dtype=np.float32)
-    # 构造延迟嵌入窗口（ordinal windows）
-    num_windows = n - (m - 1) * tau
-    windows = np.stack([x[i : i + m * tau : tau] for i in range(num_windows)], axis=0)
-    # 把窗口映射成“排列模式索引”
-    patterns = np.array([get_permutation_index(w) for w in windows], dtype=np.int32)
-    # 排序窗口（为权重计算做准备）
-    windows_sorted = np.sort(windows, axis=1, kind="stable")
-    # 初始化输出张量
-    out = np.zeros((num_patterns, num_patterns, len(span_set)), dtype=np.float32)
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root / "tools") not in sys.path:
+        sys.path.insert(0, str(repo_root / "tools"))
+    from build_amotf_v2_dense import dense_amotf_single
 
-    # amotf 算法
-    for s_idx, s in enumerate(span_set):
-        if s <= 0:
-            continue
-        max_t = num_windows - 1 - s
-        if max_t < 0:
-            continue
-        mat = out[:, :, s_idx]
-        for t in range(0, max_t + 1):
-            # 计算转移模式
-            src = int(patterns[t])
-            tgt = int(patterns[t + s])
-            # 计算转移权重
-            w_src = windows_sorted[t]
-            w_tgt = windows_sorted[t + s]
-            weight = calculate_emd_weight(w_src, w_tgt)
-            mat[src, tgt] += weight
-    return out
+    return dense_amotf_single(
+        series,
+        image_size=math.factorial(int(m)),
+        m=int(m),
+        tau=int(tau),
+        spans=list(span_set),
+        transition_mix=0.50,
+        signed_mix=0.25,
+        emd_mix=0.25,
+    )
 
 # _amotf_worker 封装
 def _amotf_worker(payload: Tuple[str, int, int, int, List[int], int, bool]) -> Tuple[bool, str]:
@@ -1209,7 +1187,8 @@ def _amotf_name_suffix(max_points: int) -> str:
 
 # 生成amotf输出文件路径
 def _amotf_output_paths(sample_dir: str, *, max_points: int) -> Dict[str, Path]:
-    out_dir = Path(remap_known_root(sample_dir)) / "amotf"
+    encoding_dir = str(os.environ.get("BATTERY_SOH_ENCODING_DIR", "amotf_v2_dense_m5") or "amotf_v2_dense_m5")
+    out_dir = Path(remap_known_root(sample_dir)) / encoding_dir.strip("/\\")
     suf = _amotf_name_suffix(int(max_points))
     return {
         "out_dir": out_dir,
@@ -1311,55 +1290,29 @@ def build_amotf_images_from_csv(
     overwrite: bool = False,
     num_workers: int = 0,
 ) -> int:
+    """Build the server88-verified Cursor AMOTF v2 dense-field tensors."""
     if spans is None:
         spans = [1, 2, 4, 8]
-    rows = load_label_rows(labels_csv)
-    if not rows:
-        LOGGER.error("No rows in labels_csv=%s", labels_csv)
-        return 2
-
-    total = len(rows)
-    ok = 0
-    fail = 0
-    reasons: Dict[str, int] = {}
-
-    payloads = [
-        (
-            str(remap_known_root(r["original_path"])),
-            int(out_size),
-            int(m),
-            int(tau),
-            list(spans or []),
-            int(max_points),
-            bool(overwrite),
-        )
-        for r in rows
+    repo_root = Path(__file__).resolve().parents[1]
+    data_root = os.environ.get("BATTERY_SOH_DINO_DATA_ROOT", str(repo_root))
+    encoding_dir = os.environ.get("BATTERY_SOH_ENCODING_DIR", "amotf_v2_dense_m5")
+    command = [
+        sys.executable,
+        str(repo_root / "tools" / "build_amotf_v2_dense.py"),
+        "--labels_csv", str(labels_csv),
+        "--data_root", str(data_root),
+        "--encoding_dir", str(encoding_dir),
+        "--variant", "dense_field_m5",
+        "--image_size", "120",
+        "--m", str(int(m)),
+        "--tau", str(int(tau)),
+        "--spans", ",".join(str(int(value)) for value in spans),
+        "--num_workers", str(max(1, int(num_workers or 1))),
     ]
-
-    if num_workers and num_workers > 0:
-        import multiprocessing as mp
-
-        ctx = mp.get_context("spawn")
-        with ctx.Pool(processes=int(num_workers)) as pool:
-            for success, reason in _tqdm(pool.imap(_amotf_worker, payloads), total=total, desc="build_amotf"):
-                if success:
-                    ok += 1
-                else:
-                    fail += 1
-                reasons[reason] = reasons.get(reason, 0) + 1
-    else:
-        for payload in _tqdm(payloads, total=total, desc="build_amotf"):
-            success, reason = _amotf_worker(payload)
-            if success:
-                ok += 1
-            else:
-                fail += 1
-            reasons[reason] = reasons.get(reason, 0) + 1
-
-    LOGGER.info("AMOTF build done. total=%d ok=%d fail=%d", total, ok, fail)
-    for k, v in sorted(reasons.items(), key=lambda x: (-x[1], x[0]))[:20]:
-        LOGGER.info("reason_top: %s = %d", k, v)
-    return 0
+    if overwrite:
+        command.append("--overwrite")
+    LOGGER.info("Running Cursor-locked AMOTF v2 builder: %s", " ".join(command))
+    return int(subprocess.run(command, cwd=str(repo_root), check=False).returncode)
 
 @dataclass
 class SampleRecord:
@@ -1648,13 +1601,13 @@ class DualImageDataset:
         input_mode: str,
         img_size: int,
         *,
-        npz_norm: str = "log1p_global",
+        npz_norm: str = "log1p_minmax",
         npz_global_max_log: float = 10.0,
     ):
         self.records = list(records)
         self.input_mode = str(input_mode)
         self.img_size = int(img_size)
-        self.npz_norm = str(npz_norm or "log1p_global").strip().lower()
+        self.npz_norm = str(npz_norm or "log1p_minmax").strip().lower()
         self.npz_global_max_log = float(npz_global_max_log)
 
         self.input_channels = 3
@@ -1713,9 +1666,15 @@ class DualImageDataset:
         else:
             hwk = a
         hwk = np.nan_to_num(hwk, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
-        mode = str(getattr(self, "npz_norm", "log1p_global") or "log1p_global").strip().lower()
+        mode = str(getattr(self, "npz_norm", "log1p_minmax") or "log1p_minmax").strip().lower()
 
-        if mode in ("per_sample_minmax", "sample_minmax", "minmax", "legacy"):
+        if mode in ("log1p_minmax", "log1p_then_minmax", "log1p_per_channel", "amotf_v2", "amotfv2", "v2"):
+            eps = np.float32(1e-8)
+            hwk = np.log1p(np.maximum(hwk, np.float32(0.0)))
+            vmin = np.min(hwk, axis=(0, 1), keepdims=True)
+            vmax = np.max(hwk, axis=(0, 1), keepdims=True)
+            hwk = np.clip((hwk - vmin) / np.maximum(vmax - vmin, eps), 0.0, 1.0)
+        elif mode in ("per_sample_minmax", "sample_minmax", "minmax", "legacy"):
             eps = np.float32(1e-6)
             vmin = np.min(hwk, axis=(0, 1), keepdims=True)
             vmax = np.max(hwk, axis=(0, 1), keepdims=True)
@@ -2182,7 +2141,7 @@ def train_dino_soh_classifier(
     chan_hidden: int = 0,
     chan_norm: str = "group",
     chan_dropout: float = 0.0,
-    npz_norm: str = "log1p_global",
+    npz_norm: str = "log1p_minmax",
     npz_global_max_log: float = 10.0,
     use_lora: bool = False,
     lora_backend: str = "auto",
@@ -3302,7 +3261,7 @@ def run_dataset_sweep(
     chan_hidden: int = 0,
     chan_norm: str = "group",
     chan_dropout: float = 0.0,
-    npz_norm: str = "log1p_global",
+    npz_norm: str = "log1p_minmax",
     npz_global_max_log: float = 10.0,
     use_lora: bool = False,
     lora_backend: str = "auto",
@@ -3575,7 +3534,7 @@ def main() -> int:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    ap_build = sub.add_parser("build_amotf", help="Build AMOTF NPZ (and optional PNG) under each sample dir/amotf/")
+    ap_build = sub.add_parser("build_amotf", help="Build AMOTF NPZ (and optional PNG) under each sample dir/amotf_v2_dense_m5/")
     ap_build.add_argument("--labels_csv", type=str, default=_default_labels_csv())
     ap_build.add_argument("--out_size", type=int, default=0)
     ap_build.add_argument("--m", type=int, default=5)
@@ -3617,7 +3576,7 @@ def main() -> int:
     ap_sw.add_argument("--chan_norm", choices=["group", "none"], default="group")
     ap_sw.add_argument("--chan_dropout", type=float, default=0.0)
 
-    ap_sw.add_argument("--npz_norm", choices=["log1p_global", "per_sample_minmax", "none"], default="log1p_global")
+    ap_sw.add_argument("--npz_norm", choices=["log1p_minmax", "log1p_then_minmax", "amotf_v2", "log1p_global", "per_sample_minmax", "none"], default="log1p_minmax")
     ap_sw.add_argument("--npz_global_max_log", type=float, default=10.0)
 
     ap_sw.add_argument("--finetune_backbone", dest="finetune_backbone", action="store_true")
